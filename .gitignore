@@ -1,0 +1,26 @@
+# 构建产物（用户自行生成）
+/lib/
+dist/
+
+# 依赖
+node_modules/
+.pnpm-store/
+.bun/
+.bun-tmp/
+.bun-home/
+
+# 锁文件（用户自行生成）
+bun.lock
+bun.lockb
+package-lock.json
+yarn.lock
+
+# 环境/临时文件
+.env
+.env.local
+*.log
+.DS_Store
+Thumbs.db
+
+# DSH 本地配置
+*.local.jsonc

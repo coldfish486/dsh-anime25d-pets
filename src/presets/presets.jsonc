@@ -1,0 +1,52 @@
+{
+  // 内置模型策展清单（Anime2.5DRig 版）
+  // 使用 Anime2.5DRig 自动装配的 PSD 分图层模型
+  // ⚠ 这是随包分发的内置模型配置：修改会随插件升级/重装被覆盖。
+  //   仅用于本地开发调试；正式自定义请使用设置面板中的「自定义模型」。
+  // 字段说明：
+  //   - modelUrl   : .psd PSD 模型 URL（图层已按 Anime2.5DRig 命名规范分好）
+  //   - spatialTap : 可选空间回退分区覆盖
+  //   - animationMap: 可选状态/互动部位动作映射（Anime2.5DRig 预设动作名）
+  "version": 4,
+  "presets": [
+    {
+      "id": "sample",
+      "name": "Sample（Anime2.5DRig 示例）",
+      "author": "Anime2.5DRig",
+      "modelUrl": "/pet-assets/models/sample.psd",
+      "license": {
+        "type": "MIT",
+        "url": "https://github.com/852wa/Anime2.5DRig"
+      },
+      "cubism": 0,
+      "status": "annotated",
+      // 示例模型的空间回退覆盖：居中五矩形
+      "spatialTap": {
+        "headMaxNy": 0.32,
+        "legMinNy": 0.60,
+        "armMinNy": 0.28,
+        "headMinNx": 0.30,
+        "headMaxNx": 0.70,
+        "bodyMinNx": 0.36,
+        "bodyMaxNx": 0.64,
+        "armLeftMinNx": 0.18,
+        "armRightMaxNx": 0.82
+      },
+      "animationMap": {
+        "idle": ["Idle"],
+        "thinking": ["Thinking", "Working", "Idle"],
+        "error": ["Failed", "Sad", "Idle"],
+        "done": ["Jumping", "Done", "Idle"],
+        "waiting": ["Waiting", "Idle"],
+        "head": ["TapHead", "TapBody"],
+        "leg": ["TapLeg", "TapBody"],
+        "arm": ["TapArm", "TapBody"],
+        "body": ["TapBody"]
+      }
+    }
+  ],
+  "loadFromUrl": {
+    "supported": true,
+    "note": "用户可在设置中输入任意 .psd URL 或本地路径加载自备模型（需按 Anime2.5DRig 图层命名规范分好图层）"
+  }
+}

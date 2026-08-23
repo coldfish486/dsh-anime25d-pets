@@ -1,0 +1,11 @@
+# dsh-anime25d-pets bundle patch: inserts the plugin row into the web roster.
+# 安装：`dsh plugin --profile web add dsh-anime25d-pets`（官方 publish.md 流程）
+# config 作为 settings namespace 的 base 层（schema 默认 → base → 用户层），
+# 用户可在「桌宠配置」设置面板覆盖；model 存预设 id（presets.jsonc）或自定义 id。
+- insert:
+    - id: anime25d-pet
+      name: dsh-anime25d-pets
+      config:
+        model: sample
+        persona: tsundere
+        debug: false
