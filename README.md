@@ -2,7 +2,7 @@
 
 **Anime2.5DRig × DSH 桌宠**：用 [Anime2.5DRig](https://github.com/852wa/Anime2.5DRig) 的 WebGL PSD 自动装配渲染引擎，为 [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness) 提供 2.5D 桌面宠物。
 
-只需准备一张**分图层 PSD**，即可获得带自动装配、发丝物理、表情动画和状态镜像的桌宠。
+只需准备一张**分图层 PSD**，即可获得带自动装配、发丝物理、表情动画、状态镜像和左右翻转的桌宠。
 
 ![Demo](assets/demo.gif)
 
@@ -36,26 +36,36 @@
 
 ## 安装与卸载
 
-### 安装（源码构建）
+### 安装（推荐：从 GitHub 安装）
 
 ```bash
-# 方式一：克隆后构建安装
+dsh plugin --profile web add github:coldfish486/dsh-anime25d-pets
+```
+
+> **注意：** DSH 安装（或安装后的 pnpm install）会**自动执行本插件的构建脚本**
+> （`prepare`/`prepack`），必须在 `pnpm-workspace.yaml` 的 `allowBuilds` 中
+> 允许本插件构建，否则不会生成 `lib/` 产物，插件运行时无法正常加载：
+
+```yaml
+allowBuilds:
+  'dsh-anime25d-pets@xxxxxx': true
+```
+
+
+### 安装（源码开发）
+
+```bash
 git clone https://github.com/coldfish486/dsh-anime25d-pets.git
 cd dsh-anime25d-pets
 pnpm install
 pnpm build
 dsh plugin --profile web add /path/to/dsh-anime25d-pets
-
-# 方式二：手动复制
-# 构建后把整个项目（含 lib/）复制到 DSH profile 的 node_modules 下：
-cp -r dsh-anime25d-pets /root/.dsh/profiles/web/node_modules/
-# 然后在 /root/.dsh/profiles/web/package.json 的
-# dependencies 和 dsh.profile.bundles 中添加 dsh-anime25d-pets
 ```
 
 ### 升级
 
 ```bash
+# 从 GitHub 安装的可重新执行 add 拉取最新版，或进入插件目录后：
 cd dsh-anime25d-pets
 git pull
 pnpm install
@@ -89,9 +99,9 @@ dsh plugin --profile web remove dsh-anime25d-pets
    - 填写名称和 `.psd` 地址（支持 HTTP URL 或本地绝对路径）
    - 点击保存
 4. **使用**：
-   - 点击桌宠右下角 **⚙** 打开角色调节面板
+   - 将鼠标移到桌宠上，右下角会浮出 **⚙** 设置按钮，点击打开角色调节面板
    - 拖动滑块实时调整头部/眼睛/眉毛/嘴巴/发型/身体参数
-   - 切换"随机开口说话"和"随机小动作"开关
+   - 切换"随机开口说话""随机小动作"和"左右翻转桌宠"开关
    - 拖动桌宠到任意位置（自动保存）
 
 ### 可复现示例
@@ -107,6 +117,7 @@ anime25d-pet:
     mouthOpen: 0.3         # 嘴巴张开
   talk: true               # 随机开口说话
   rand: false              # 随机小动作
+  flip: false              # 左右镜像翻转
   persona: tsundere
 ```
 
@@ -124,6 +135,7 @@ anime25d-pet:
 | `animeParams` | object | `{}` | Anime2.5D 参数滑块（34 个参数） |
 | `talk` | boolean | `false` | 随机开口说话 |
 | `rand` | boolean | `false` | 随机小动作 |
+| `flip` | boolean | `false` | 左右镜像翻转桌宠（浮动面板同步管理） |
 | `persona` | string | `tsundere` | 人设 ID |
 | `developerMode` | boolean | `false` | 开发者模式 |
 | `debug` | boolean | `false` | 调试面板 |

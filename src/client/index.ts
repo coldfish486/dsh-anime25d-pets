@@ -85,6 +85,9 @@ import { Anime25DRenderer, DEFAULT_MOTION_PRESETS, ANIME_SLIDERS, DEFAULT_PARAMS
 
 const PET_API = '/api/anime25d-pet'
 
+/** 最近一次收到的 PetStateView（loadParamsStorage 默认数据源）。 */
+let currentViewRef: PetStateView | null = null
+
 /** 最小 slots 服务结构类型（运行时由 DSH 提供）。 */
 interface SlotsLike {
   inject(key: string, callback: () => () => void): () => void
@@ -284,21 +287,23 @@ function PetAnchor(): ReturnType<typeof createElement> {
 /**
  * 读取当前 Anime2.5D 参数配置。
  * 数据来自 PetStateView.config（Host 从 settings.yaml 读取并推送）。
- * @param fromView 可选的 PetStateView，提供配置数据源（默认从闭包中的 view 读取）
+ * @param fromView 可选的 PetStateView，提供配置数据源（默认从最近一次快照 currentViewRef 读取）
  */
-function loadParamsStorage(fromView?: PetStateView | null): Partial<Anime25DParams> & { talk?: boolean; rand?: boolean } {
-  const cfg = fromView?.config
+function loadParamsStorage(fromView?: PetStateView | null): Partial<Anime25DParams> & { talk?: boolean; rand?: boolean; flip?: boolean } {
+  // 无显式入参时使用最近一次 SSE/首帧快照，确保浏览器重启后能读回设置。
+  const cfg = (fromView ?? currentViewRef)?.config
   return {
     ...(cfg?.animeParams ?? {}),
     talk: cfg?.talk ?? false,
     rand: cfg?.rand ?? false,
+    flip: cfg?.flip ?? false,
   }
 }
 
 /** 保存 Anime2.5D 参数配置到 DSH settings.yaml（通过 settings API 写入）。 */
 function saveParamsStorage(
   params: Partial<Anime25DParams>,
-  autos: { talk?: boolean; rand?: boolean } = {},
+  autos: { talk?: boolean; rand?: boolean; flip?: boolean } = {},
   fromView?: PetStateView | null,
 ): void {
   // 读取当前配置并合并
@@ -306,8 +311,10 @@ function saveParamsStorage(
   const mergedParams = { ...current, ...params } as Record<string, unknown>
   delete mergedParams.talk
   delete mergedParams.rand
+  delete mergedParams.flip
   const talk = autos.talk ?? current.talk ?? false
   const rand = autos.rand ?? current.rand ?? false
+  const flip = autos.flip ?? current.flip ?? false
   // 异步写入 settings API
   void fetch('/api/anime25d-pet/settings', {
     method: 'POST',
@@ -317,6 +324,7 @@ function saveParamsStorage(
         { op: 'set', path: ['animeParams'], value: mergedParams },
         { op: 'set', path: ['talk'], value: talk },
         { op: 'set', path: ['rand'], value: rand },
+        { op: 'set', path: ['flip'], value: flip },
       ],
     }),
   }).catch(() => {})
@@ -332,6 +340,7 @@ function clearParamsStorage(): void {
         { op: 'set', path: ['animeParams'], value: {} },
         { op: 'set', path: ['talk'], value: false },
         { op: 'set', path: ['rand'], value: false },
+        { op: 'set', path: ['flip'], value: false },
       ],
     }),
   }).catch(() => {})
@@ -360,6 +369,8 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
   let paramsPanel: HTMLDivElement | null = null
   let paramsToggleBtn: HTMLButtonElement | null = null
   let paramsPanelVisible = false
+  /** 指针是否悬停在互动区（宠物画布）或设置按钮上。 */
+  let paramsHover = false
   let debugEl: HTMLDivElement | null = null
   /** 调试面板“动画预览”数据：当前模型 MotionManager 暴露的全部具体动画。 */
   let debugMotionList: DebugMotionItem[] = []
@@ -903,6 +914,9 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
       canvas.addEventListener('pointermove', handlePointerMove)
       canvas.addEventListener('pointerup', handlePointerUp)
       canvas.addEventListener('pointercancel', () => { down = null; dragging = false })
+      // 设置按钮仅在指针位于互动区上时显示（面板开启或悬停按钮时保持可见）
+      canvas.addEventListener('pointerenter', () => { paramsHover = true; updateSettingsBtnVisibility() })
+      canvas.addEventListener('pointerleave', () => { paramsHover = false; updateSettingsBtnVisibility() })
     } catch {
       // 加载失败 → 静态头像（spec §7）；已卸载则不再展示
       teardownLayer()
@@ -919,6 +933,7 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
     const saved = loadParamsStorage(view)
     const savedTalk = typeof saved.talk === 'boolean' ? saved.talk : false
     const savedRand = typeof saved.rand === 'boolean' ? saved.rand : false
+    const savedFlip = typeof saved.flip === 'boolean' ? saved.flip : false
 
     // 同步滑块
     const defsMap = new Map(ANIME_SLIDERS.map((d) => [d.key, d]))
@@ -935,11 +950,12 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
       }
     })
 
-    // 同步开关
+    // 同步开关（含 talk/rand/flip：checkbox 需带 data-param 标识）
     paramsPanel.querySelectorAll('input[type="checkbox"]').forEach((el) => {
       const cb = el as HTMLInputElement
       if (cb.dataset.param === 'talk') cb.checked = savedTalk
       if (cb.dataset.param === 'rand') cb.checked = savedRand
+      if (cb.dataset.param === 'flip') cb.checked = savedFlip
     })
   }
 
@@ -950,25 +966,28 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
     if (paramsToggleBtn) { paramsToggleBtn.remove(); paramsToggleBtn = null }
     if (paramsPanel) { paramsPanel.remove(); paramsPanel = null }
     paramsPanelVisible = false
-    // 从 localStorage 恢复已保存的参数和开关状态
-    const savedParams = loadParamsStorage()
+    paramsHover = false
+    // 从 settings 配置（view / currentViewRef）恢复已保存的参数和开关状态
+    const savedParams = loadParamsStorage(view)
     const savedTalk = typeof savedParams.talk === 'boolean' ? savedParams.talk : false
     const savedRand = typeof savedParams.rand === 'boolean' ? savedParams.rand : false
+    const savedFlip = typeof savedParams.flip === 'boolean' ? savedParams.flip : false
     // 应用已保存的参数
     if (animeRenderer) {
       animeRenderer.setParams(savedParams as Partial<Anime25DParams>)
       animeRenderer.setAuto('talk', savedTalk)
       animeRenderer.setAuto('rand', savedRand)
+      animeRenderer.setFlip(savedFlip)
     }
 
-    // 创建调整按钮（位于画布右上角）
+    // 创建调整按钮（位于画布右下角；仅在鼠标悬停互动区/按钮/面板开启时显示）
     paramsToggleBtn = document.createElement('button')
     paramsToggleBtn.textContent = '⚙'
     paramsToggleBtn.title = '角色调节'
     paramsToggleBtn.style.cssText = [
       'position:absolute',
-      'bottom:-28px',
-      'right:0',
+      'bottom:6px',
+      'right:6px',
       'width:24px',
       'height:24px',
       'border-radius:6px',
@@ -979,7 +998,9 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
       'line-height:1',
       'cursor:pointer',
       'z-index:10',
-      'pointer-events:auto',
+      'pointer-events:none',
+      'opacity:0',
+      'transition:opacity .15s ease',
       'display:flex',
       'align-items:center',
       'justify-content:center',
@@ -993,12 +1014,15 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
       e.stopPropagation()
       toggleParamsPanel()
     })
+    // 鼠标停在按钮上时保持可见，移出按钮后隐藏（面板开启时始终可见）
+    paramsToggleBtn.addEventListener('pointerenter', () => { paramsHover = true; updateSettingsBtnVisibility() })
+    paramsToggleBtn.addEventListener('pointerleave', () => { paramsHover = false; updateSettingsBtnVisibility() })
 
-    // 创建浮动面板
+    // 创建浮动面板（底部与互动区对齐，而非顶部）
     paramsPanel = document.createElement('div')
     paramsPanel.style.cssText = [
       'position:absolute',
-      'top:0',
+      'bottom:0',
       'right:calc(100% + 6px)',
       'width:280px',
       'max-height:420px',
@@ -1037,6 +1061,7 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
       animeRenderer.resetParams()
       animeRenderer.setAuto('talk', false)
       animeRenderer.setAuto('rand', false)
+      animeRenderer.setFlip(false)
       // 清除 localStorage
       clearParamsStorage()
       // 同步 UI
@@ -1067,6 +1092,7 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
     talkRow.appendChild(talkLabel)
     const talkSwitch = document.createElement('input')
     talkSwitch.type = 'checkbox'
+    talkSwitch.dataset.param = 'talk'
     talkSwitch.checked = savedTalk
     talkSwitch.style.cssText = 'width:16px;height:16px;cursor:pointer'
     talkSwitch.addEventListener('change', () => {
@@ -1087,6 +1113,7 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
     randRow.appendChild(randLabel)
     const randSwitch = document.createElement('input')
     randSwitch.type = 'checkbox'
+    randSwitch.dataset.param = 'rand'
     randSwitch.checked = savedRand
     randSwitch.style.cssText = 'width:16px;height:16px;cursor:pointer'
     randSwitch.addEventListener('change', () => {
@@ -1097,6 +1124,27 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
     })
     randRow.appendChild(randSwitch)
     paramsPanel.appendChild(randRow)
+
+    // 左右翻转桌宠开关
+    const flipRow = document.createElement('div')
+    flipRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin:4px 0;padding:6px 8px;border-radius:6px;background:rgba(128,128,128,.08)'
+    const flipLabel = document.createElement('span')
+    flipLabel.textContent = '左右翻转桌宠'
+    flipLabel.style.cssText = 'flex:1;font-size:12px;color:#ccc'
+    flipRow.appendChild(flipLabel)
+    const flipSwitch = document.createElement('input')
+    flipSwitch.type = 'checkbox'
+    flipSwitch.dataset.param = 'flip'
+    flipSwitch.checked = savedFlip
+    flipSwitch.style.cssText = 'width:16px;height:16px;cursor:pointer'
+    flipSwitch.addEventListener('change', () => {
+      if (animeRenderer) {
+        animeRenderer.setFlip(flipSwitch.checked)
+        saveParamsStorage({}, { flip: flipSwitch.checked }, view)
+      }
+    })
+    flipRow.appendChild(flipSwitch)
+    paramsPanel.appendChild(flipRow)
 
     paramsPanel.appendChild(resetRow)
 
@@ -1160,15 +1208,21 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
     layer2.appendChild(paramsPanel)
   }
 
+  /** 更新设置按钮可见性：仅在指针悬停互动区（含按钮本身）时显示。 */
+  function updateSettingsBtnVisibility(): void {
+    if (!paramsToggleBtn) return
+    const visible = paramsHover
+    paramsToggleBtn.style.opacity = visible ? (paramsPanelVisible ? '0.5' : '1') : '0'
+    paramsToggleBtn.style.pointerEvents = visible ? 'auto' : 'none'
+  }
+
   /** 切换 Anime2.5D 参数面板显示/隐藏。 */
   function toggleParamsPanel(force?: boolean): void {
     paramsPanelVisible = force ?? !paramsPanelVisible
     if (paramsPanel) {
       paramsPanel.style.display = paramsPanelVisible ? 'block' : 'none'
     }
-    if (paramsToggleBtn) {
-      paramsToggleBtn.style.opacity = paramsPanelVisible ? '0.5' : '1'
-    }
+    updateSettingsBtnVisibility()
   }
 
   /** 模型重载队列：串行执行，避免快速切换时并发加载。 */
@@ -1446,6 +1500,7 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
     if (animeRenderer) {
       animeRenderer.setAuto('talk', cfg.talk ?? false)
       animeRenderer.setAuto('rand', cfg.rand ?? false)
+      animeRenderer.setFlip(cfg.flip ?? false)
     }
     // 同步浮动画板 UI（滑块/开关与 settings 配置保持一致）
     syncParamsPanelUI()
@@ -1567,6 +1622,7 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
       // 1. 初始状态（配置 + 显示位置）
       try { view = await api.state() } catch { /* 首帧前 API 不可用则用默认 */ }
       if (disposed) return
+      currentViewRef = view
       if (view) pos = { ...view.display, size: view.config.size }
 
       // 2. 顶层容器（Popover API，回退 body + max z）
@@ -1613,6 +1669,7 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
       const handleState = (next: PetStateView): void => {
         if (disposed) return
         view = next
+        currentViewRef = next
         // 位置取持久化值；渲染尺寸保持现状，由 applyConfig 负责 diff 与更新
         pos = { right: next.display.right, bottom: next.display.bottom, size: pos.size }
         applyConfig(next)

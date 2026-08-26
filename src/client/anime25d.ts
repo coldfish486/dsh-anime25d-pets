@@ -146,6 +146,7 @@ export class Anime25DRenderer {
   private locRes: WebGLUniformLocation | null = null
   private locCut: WebGLUniformLocation | null = null
   private locAl: WebGLUniformLocation | null = null
+  private locFlip: WebGLUniformLocation | null = null
 
   /** 渲染层数据。 */
   private layers: any[] = []
@@ -186,6 +187,8 @@ export class Anime25DRenderer {
 
   /** 鼠标状态。 */
   private mouse = { x: 0, y: 0, in: false }
+  /** 左右镜像翻转。 */
+  private flipped = false
 
   /** 动作定时器（清理用）。 */
   private motionTimer: ReturnType<typeof setTimeout> | null = null
@@ -242,8 +245,8 @@ export class Anime25DRenderer {
 
     this.prog = gl.createProgram()!
     gl.attachShader(this.prog!, sh(gl.VERTEX_SHADER,
-      'attribute vec2 aPos; attribute vec2 aUV; uniform vec2 uRes; varying vec2 vUV;' +
-      'void main(){ vUV=aUV; vec2 c = aPos/uRes*2.0-1.0; gl_Position=vec4(c.x,-c.y,0.0,1.0); }'))
+      'attribute vec2 aPos; attribute vec2 aUV; uniform vec2 uRes; uniform float uFlip; varying vec2 vUV;' +
+      'void main(){ vUV=aUV; vec2 c = aPos/uRes*2.0-1.0; gl_Position=vec4(c.x*uFlip,-c.y,0.0,1.0); }'))
     gl.attachShader(this.prog!, sh(gl.FRAGMENT_SHADER,
       'precision mediump float; varying vec2 vUV; uniform sampler2D uTex; uniform float uCut; uniform float uAlpha;' +
       'void main(){ vec4 c=texture2D(uTex,vUV); if(c.a<uCut) discard; gl_FragColor=c*uAlpha; }'))
@@ -255,6 +258,7 @@ export class Anime25DRenderer {
     this.locRes = gl.getUniformLocation(this.prog!, 'uRes')
     this.locCut = gl.getUniformLocation(this.prog!, 'uCut')
     this.locAl = gl.getUniformLocation(this.prog!, 'uAlpha')
+    this.locFlip = gl.getUniformLocation(this.prog!, 'uFlip')
 
     gl.enableVertexAttribArray(this.locPos)
     gl.enableVertexAttribArray(this.locUV)
@@ -267,7 +271,9 @@ export class Anime25DRenderer {
   private initCanvasEvents(): void {
     this.canvas.addEventListener('mousemove', (e: MouseEvent) => {
       const r = this.canvas.getBoundingClientRect()
-      this.mouse.x = (e.clientX - r.left) / r.width * 2 - 1
+      const rawX = (e.clientX - r.left) / r.width * 2 - 1
+      // 镜像显示时，屏幕右侧对应模型左侧，反转水平跟随目标。
+      this.mouse.x = this.flipped ? -rawX : rawX
       this.mouse.y = (e.clientY - r.top) / r.height * 2 - 1
       this.mouse.in = true
     })
@@ -764,10 +770,12 @@ export class Anime25DRenderer {
 
   /** 鼠标/视线跟随（对应 Live2D 的 focus()）。 */
   focus(x: number, y: number, instant = false): void {
-    // x/y 为 canvas 本地坐标，归一化到 [-1,1]
+    // x/y 为 canvas 本地坐标，归一化到 [-1,1]；
+    // 镜像显示时水平方向取反，使人物的视线仍朝向屏幕上的鼠标位置。
     const w = this.canvas.width || 1
     const h = this.canvas.height || 1
-    const nx = this.clamp((x / w) * 2 - 1, -1, 1)
+    const fx = this.flipped ? w - x : x
+    const nx = this.clamp((fx / w) * 2 - 1, -1, 1)
     const ny = this.clamp((y / h) * 2 - 1, -1, 1)
     const speed = instant ? 1 : 0.2
     this.P.angleX += (nx * 0.6 - this.P.angleX) * speed
@@ -821,6 +829,16 @@ export class Anime25DRenderer {
   resetParams(): void {
     this.T = { ...DEFAULT_PARAMS }
     this.manualSet.clear()
+  }
+
+  /** 设置左右镜像翻转。 */
+  setFlip(on: boolean): void {
+    this.flipped = !!on
+  }
+
+  /** 查询当前是否已镜像翻转。 */
+  get flip(): boolean {
+    return this.flipped
   }
 
   /** 设置自动动画开关。 */
@@ -1114,6 +1132,7 @@ export class Anime25DRenderer {
     gl.clearStencil(0)
     gl.clear(gl.COLOR_BUFFER_BIT | gl.STENCIL_BUFFER_BIT)
     gl.uniform2f(this.locRes, this.CW, this.CH)
+    gl.uniform1f(this.locFlip, this.flipped ? -1 : 1)
 
     for (const L of this.layers) {
       const fa = this.fadeAlpha(L, e)

@@ -73,6 +73,8 @@ export interface Config {
   talk?: boolean
   /** 随机小动作开关（浮动画板，settings.yaml 持久化）。 */
   rand?: boolean
+  /** 左右翻转桌宠（浮动画板，settings.yaml 持久化）。 */
+  flip?: boolean
   /** 选中人设 id：内置（tsundere/genki/…）或自定义人设 id（spec §3）。 */
   persona: string
 }
@@ -87,6 +89,7 @@ export const Config: Schema<Config> = Schema.object({
   animeParams: Schema.object({}).default({}),
   talk: Schema.boolean().default(false),
   rand: Schema.boolean().default(false),
+  flip: Schema.boolean().default(false),
   persona: Schema.string().default('tsundere'),
 })
 

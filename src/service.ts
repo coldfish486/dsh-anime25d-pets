@@ -47,6 +47,8 @@ export interface PetStateView {
     talk: boolean
     /** 随机小动作开关。 */
     rand: boolean
+    /** 左右翻转桌宠（镜像显示）。 */
+    flip: boolean
     /** 选中人设 id（内置或自定义；spec §3）。 */
     persona: string
   }
@@ -149,6 +151,7 @@ export class PetService {
         animeParams: config.animeParams ?? {},
         talk: config.talk ?? false,
         rand: config.rand ?? false,
+        flip: config.flip ?? false,
         persona: config.persona || DEFAULT_PERSONA_ID,
       },
       display: { ...this.display },
