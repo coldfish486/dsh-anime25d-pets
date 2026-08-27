@@ -10,7 +10,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-user-approval'
 import type { Config } from './index.ts'
-import type { CustomModelEntry, MotionMap, SpatialTapConfig } from './models.ts'
+import { DEFAULT_FPS_LIMIT, DEFAULT_OPACITY, type CustomModelEntry, type MotionMap, type SpatialTapConfig } from './models.ts'
 import { resolveModelUrl, resolveMotionMap, resolveSpatialTap } from './models-host.ts'
 import { CustomModelsStore, type CustomModelsFileView } from './custom-models.ts'
 import {
@@ -49,6 +49,10 @@ export interface PetStateView {
     rand: boolean
     /** 左右翻转桌宠（镜像显示）。 */
     flip: boolean
+    /** FPS 限制（30 / 60 / 0=无限制）。 */
+    fpsLimit: number
+    /** 宠物透明度（0~1，含气泡）。 */
+    opacity: number
     /** 选中人设 id（内置或自定义；spec §3）。 */
     persona: string
   }
@@ -152,6 +156,8 @@ export class PetService {
         talk: config.talk ?? false,
         rand: config.rand ?? false,
         flip: config.flip ?? false,
+        fpsLimit: config.fpsLimit ?? DEFAULT_FPS_LIMIT,
+        opacity: config.opacity ?? DEFAULT_OPACITY,
         persona: config.persona || DEFAULT_PERSONA_ID,
       },
       display: { ...this.display },

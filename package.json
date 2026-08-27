@@ -1,6 +1,6 @@
 {
   "name": "dsh-anime25d-pets",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Anime2.5DRig × DSH pet: PSD auto-rig 2.5D desktop pet using Anime2.5DRig rendering instead of Live2D",
   "type": "module",
   "main": "lib/index.js",

@@ -25,7 +25,9 @@ import { resolvePersonaCopy, BUILTIN_PERSONAS } from './personas.ts'
 import type { CopyTable } from '../persona-shared.ts'
 import { DEFAULT_PERSONA_ID } from '../persona-shared.ts'
 import {
+  DEFAULT_FPS_LIMIT,
   DEFAULT_MOTION_MAP,
+  DEFAULT_OPACITY,
   DEFAULT_SPATIAL_TAP,
   type AnimationSlot,
   type MotionMap,
@@ -106,13 +108,6 @@ interface SlotsLike {
 }
 
 interface DisplayLike { right: number; bottom: number; size: number }
-
-/** 调试预览用：模型中的一个具体动画（动作组 + 组内下标 + 展示名）。 */
-interface DebugMotionItem {
-  group: string
-  index: number
-  label: string
-}
 
 interface ModelLike {
   width: number
@@ -368,19 +363,14 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
   /** Anime2.5DRig 参数浮动画板。 */
   let paramsPanel: HTMLDivElement | null = null
   let paramsToggleBtn: HTMLButtonElement | null = null
+  /** 状态呼吸灯（纯展示，位置/大小同设置按钮）。 */
+  let statusLightEl: HTMLDivElement | null = null
   let paramsPanelVisible = false
   /** 指针是否悬停在互动区（宠物画布）或设置按钮上。 */
   let paramsHover = false
   let debugEl: HTMLDivElement | null = null
-  /** 调试面板“动画预览”数据：当前模型 MotionManager 暴露的全部具体动画。 */
-  let debugMotionList: DebugMotionItem[] = []
-  /** 按模型 URL 缓存原生动画列表，避免重复请求同一份 PSD。 */
-  const motionListCache = new Map<string, DebugMotionItem[]>()
-  let debugMotionSelect: HTMLSelectElement | null = null
-  /** 调试面板状态文本容器：与演示按钮/动画预览并列，避免被 textContent 覆盖。 */
+  /** 调试面板状态文本容器。 */
   let debugTextEl: HTMLDivElement | null = null
-  /** 是否正处于 debug 原生动画预览：预览期间抑制 focus，结束后只恢复跟随，不触发状态恢复。 */
-  let previewActive = false
   let canvas: HTMLCanvasElement | null = null
   /** 画布外包一层，便于绝对定位调试分区叠加层。 */
   let petLayer: HTMLDivElement | null = null
@@ -575,7 +565,6 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
     if (!model || names.length === 0) return false
     const seq = ++motionSeq
     const currentModel = model
-    previewActive = false
     if (options.suppressFocus) {
       focusSuppressed = true
       currentModel.internalModel?.focusController?.focus(0, 0, true)
@@ -619,8 +608,6 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
    * 注意该事件在库内部 state.complete()/自动回 idle 之前同步触发，恢复动作需延到微任务，
    * 避免在 MotionManager.update 中间重入修改 MotionState。 */
   function handleMotionFinish(): void {
-    const wasPreview = previewActive
-    previewActive = false
     const wasInteraction = interactionActive
     const gen = interactionGen
     const seq = motionSeq
@@ -629,12 +616,28 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
       // 若期间已有新动作启动（motionSeq 变化），由新动作接管焦点/恢复，这里不再处理
       if (seq !== motionSeq) return
       releaseFocusSuppression()
-      // debug 原生预览结束后只恢复 focus，不触发状态动作恢复
-      if (wasPreview) return
       if (wasInteraction && gen === interactionGen && !interactionActive && lastState) {
         playState(lastState)
       }
     })
+  }
+
+  /** 状态呼吸灯配色（纯展示）。 */
+  const STATUS_LIGHT_COLORS: Record<PetState, string> = {
+    idle: '#22c55e',
+    thinking: '#f59e0b',
+    error: '#ef4444',
+    done: '#3b82f6',
+    waiting: '#a855f7',
+  }
+
+  function updateStatusLight(state: PetState): void {
+    if (!statusLightEl) return
+    const dot = statusLightEl.firstElementChild as HTMLElement | null
+    if (!dot) return
+    const color = STATUS_LIGHT_COLORS[state] ?? '#22c55e'
+    dot.style.background = color
+    dot.style.boxShadow = `0 0 10px ${color}`
   }
 
   function applyState(next: PetStateView | null): void {
@@ -659,6 +662,7 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
     // 阶段演进常驻气泡，短状态气泡瞬态显示；点击互动另走 handleTap（可连点打断）。
     // 动作只在状态变化（及长状态阶段推进）时触发；startMotionWithPriority 会先
     // stopAllMotions 再按优先级启动，保证状态动作可立即切换、阶段可重播。
+    updateStatusLight(state)
     if (state !== lastState) {
       lastState = state
       if (STAGED_DELAYS[state]) {
@@ -759,7 +763,6 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
     motionSeq += 1
     interactionGen += 1
     interactionActive = false
-    previewActive = false
     focusSuppressed = false
     lastPointerClient = null
     detachMotionFinish?.()
@@ -786,6 +789,8 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
     // 清理 Anime2.5D 参数面板
     if (paramsToggleBtn && paramsToggleBtn.parentNode) paramsToggleBtn.parentNode.removeChild(paramsToggleBtn)
     paramsToggleBtn = null
+    if (statusLightEl && statusLightEl.parentNode) statusLightEl.parentNode.removeChild(statusLightEl)
+    statusLightEl = null
     if (paramsPanel && paramsPanel.parentNode) paramsPanel.parentNode.removeChild(paramsPanel)
     paramsPanel = null
     paramsPanelVisible = false
@@ -894,7 +899,6 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
       detachMotionFinish?.()
       detachMotionFinish = () => { renderer.onMotionFinish = null }
 
-      refreshDebugMotionGroups()
       fitModel(pos.size)
 
       // 设置渲染器自动动作：空闲/眨眼开启
@@ -902,6 +906,10 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
       renderer.setAuto('blink', true)
       renderer.setAuto('mouse', true)
       renderer.setAuto('phys', true)
+
+      // 应用 FPS/透明度初始配置（SSE 首帧/后续配置也会再次应用）
+      renderer.setFpsLimit(view?.config.fpsLimit ?? DEFAULT_FPS_LIMIT)
+      if (box) box.style.opacity = String(view?.config.opacity ?? DEFAULT_OPACITY)
 
       // 创建 Anime2.5DRig 参数浮动画板（会从 settings.yaml 恢复 talk/rand 开关）
       setupParamsPanel()
@@ -943,6 +951,15 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
       if (key && defsMap.has(key as keyof typeof DEFAULT_PARAMS)) {
         const v = (saved as Record<string, number>)[key]
         if (typeof v === 'number') {
+          // pending 未确认前不强制回写，避免松手后闪回旧值
+          const pending = input.dataset.pendingValue
+          if (pending !== undefined) {
+            if (Math.abs(Number(pending) - v) < 0.0001) {
+              delete input.dataset.pendingValue
+            } else {
+              return
+            }
+          }
           input.value = String(v)
           const valLabel = input.parentElement?.querySelector('.param-val')
           if (valLabel) valLabel.textContent = v.toFixed(2)
@@ -964,6 +981,7 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
     if (!box || !animeRenderer) return
     // 清理旧的
     if (paramsToggleBtn) { paramsToggleBtn.remove(); paramsToggleBtn = null }
+    if (statusLightEl) { statusLightEl.remove(); statusLightEl = null }
     if (paramsPanel) { paramsPanel.remove(); paramsPanel = null }
     paramsPanelVisible = false
     paramsHover = false
@@ -979,6 +997,40 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
       animeRenderer.setAuto('rand', savedRand)
       animeRenderer.setFlip(savedFlip)
     }
+
+    // 创建状态呼吸灯（纯展示，默认显示；鼠标悬停后由设置按钮覆盖）
+    statusLightEl = document.createElement('div')
+    statusLightEl.style.cssText = [
+      'position:absolute',
+      'bottom:6px',
+      'right:6px',
+      'width:24px',
+      'height:24px',
+      'border-radius:50%',
+      'border:none',
+      'background:transparent',
+      'z-index:10',
+      'pointer-events:none',
+      'display:flex',
+      'align-items:center',
+      'justify-content:center',
+      'opacity:1',
+      'transition:opacity .15s ease',
+    ].join(';')
+    const lightDot = document.createElement('div')
+    lightDot.style.cssText = 'width:14px;height:14px;border-radius:50%;background:#22c55e;box-shadow:0 0 10px #22c55e'
+    statusLightEl.appendChild(lightDot)
+    // 呼吸动画：通过 Web Animations API 实现，无需全局 keyframes
+    lightDot.animate(
+      [
+        { opacity: 0.35, transform: 'scale(0.75)' },
+        { opacity: 1, transform: 'scale(1)' },
+      ],
+      { duration: 2000, iterations: Infinity, direction: 'alternate', easing: 'ease-in-out' },
+    )
+    const statusLayer = petLayer ?? box
+    statusLayer.style.position = 'relative'
+    statusLayer.appendChild(statusLightEl)
 
     // 创建调整按钮（位于画布右下角；仅在鼠标悬停互动区/按钮/面板开启时显示）
     paramsToggleBtn = document.createElement('button')
@@ -1062,7 +1114,7 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
       animeRenderer.setAuto('talk', false)
       animeRenderer.setAuto('rand', false)
       animeRenderer.setFlip(false)
-      // 清除 localStorage
+      // 清除 settings 中的参数/开关配置（同步重置为默认）
       clearParamsStorage()
       // 同步 UI
       const inputs = paramsPanel?.querySelectorAll('input[type="range"]') ?? []
@@ -1184,12 +1236,22 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
         input.style.cssText = 'flex:1;height:14px;min-width:0'
         input.addEventListener('input', () => {
           const v = Number(input.value)
+          // 拖动时仅即时预览，避免 SSE 回写把滑块反复拉回
+          if (animeRenderer) {
+            animeRenderer.setParam(def.key as any, v as any)
+          }
+          const valLabel = row.querySelector('.param-val')
+          if (valLabel) valLabel.textContent = v.toFixed(2)
+        })
+        // 松手/输入结束才写入 settings，行为与尺寸滑块一致
+        input.addEventListener('change', () => {
+          const v = Number(input.value)
+          // 记录 pending，等待 SSE 回写确认后再允许同步 UI，避免闪回旧值
+          input.dataset.pendingValue = String(v)
           if (animeRenderer) {
             animeRenderer.setParam(def.key as any, v as any)
             saveParamsStorage({ [def.key]: v } as Partial<Anime25DParams>, {}, view)
           }
-          const valLabel = row.querySelector('.param-val')
-          if (valLabel) valLabel.textContent = v.toFixed(2)
         })
         row.appendChild(input)
 
@@ -1208,12 +1270,20 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
     layer2.appendChild(paramsPanel)
   }
 
-  /** 更新设置按钮可见性：仅在指针悬停互动区（含按钮本身）时显示。 */
+  /** 更新设置按钮/状态灯可见性。
+   * - 鼠标悬停互动区：显示设置按钮，隐藏呼吸灯
+   * - 未悬停：显示呼吸灯，隐藏设置按钮
+   */
   function updateSettingsBtnVisibility(): void {
-    if (!paramsToggleBtn) return
     const visible = paramsHover
-    paramsToggleBtn.style.opacity = visible ? (paramsPanelVisible ? '0.5' : '1') : '0'
-    paramsToggleBtn.style.pointerEvents = visible ? 'auto' : 'none'
+    if (paramsToggleBtn) {
+      paramsToggleBtn.style.opacity = visible ? (paramsPanelVisible ? '0.5' : '1') : '0'
+      paramsToggleBtn.style.pointerEvents = visible ? 'auto' : 'none'
+    }
+    if (statusLightEl) {
+      statusLightEl.style.opacity = visible ? '0' : '1'
+      statusLightEl.style.pointerEvents = visible ? 'none' : 'none'
+    }
   }
 
   /** 切换 Anime2.5D 参数面板显示/隐藏。 */
@@ -1306,91 +1376,6 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
     else stopZoneLoop()
   }
 
-  /** 调试面板的动画下拉同步（模型加载/切换时刷新选项）。 */
-  function updateDebugMotionSelect(): void {
-    if (!debugMotionSelect) return
-    const previous = debugMotionSelect.value
-    debugMotionSelect.textContent = ''
-    if (debugMotionList.length === 0) {
-      const opt = document.createElement('option')
-      opt.value = ''
-      opt.textContent = '（无动画或模型未加载）'
-      debugMotionSelect.appendChild(opt)
-      debugMotionSelect.value = ''
-      return
-    }
-    const groups = [...new Set(debugMotionList.map((item) => item.group))]
-    for (const group of groups) {
-      const optgroup = document.createElement('optgroup')
-      optgroup.label = group
-      for (const item of debugMotionList) {
-        if (item.group !== group) continue
-        const opt = document.createElement('option')
-        opt.value = `${item.group}\u0000${item.index}`
-        opt.textContent = item.label
-        optgroup.appendChild(opt)
-      }
-      debugMotionSelect.appendChild(optgroup)
-    }
-    if (debugMotionList.some((item) => `${item.group}\u0000${item.index}` === previous)) {
-      debugMotionSelect.value = previous
-    } else {
-      debugMotionSelect.value = ''
-    }
-  }
-
-  /** 从 Anime2.5DRig 内置动作定义获取全部动作列表（不经过插件状态/映射逻辑）。 */
-  async function refreshDebugMotionGroups(): Promise<void> {
-    const url = currentModelUrl
-    const currentModel = model
-    if (!url || !currentModel) return
-    const cached = motionListCache.get(url)
-    if (cached) {
-      if (model === currentModel && debugMotionSelect) {
-        debugMotionList = cached
-        updateDebugMotionSelect()
-      }
-      return
-    }
-    // Anime2.5DRig 使用内部预设动作表（DEFAULT_MOTION_PRESETS），无需拉取外部 JSON
-    const defs = currentModel.internalModel?.motionManager?.definitions
-      ?? currentModel.renderer?.motionDefinitions
-      ?? {}
-    const list: DebugMotionItem[] = []
-    for (const [group, motions] of Object.entries(defs)) {
-      if (!Array.isArray(motions)) continue
-      motions.forEach((motion, index) => {
-        const file = typeof motion === 'object' && motion !== null && 'File' in motion
-          ? String((motion as { File?: unknown }).File ?? index)
-          : String(index)
-        list.push({ group, index, label: `${group} / ${file}` })
-      })
-    }
-    motionListCache.set(url, list)
-    if (model !== currentModel || !debugMotionSelect) return
-    debugMotionList = list
-    updateDebugMotionSelect()
-  }
-
-  /** debug 预览：直接播放模型原生指定动画（动作组 + 下标）。
-   *  每次点击都 stopAllMotions 后重播，因此同一动画也可反复预览；
-   *  预览期间抑制 focus，播完只恢复跟随，不触发状态动作恢复。 */
-  function previewMotion(value: string): void {
-    if (!model || !value) return
-    const sep = value.indexOf('\u0000')
-    if (sep < 0) return
-    const group = value.slice(0, sep)
-    const index = Number(value.slice(sep + 1))
-    if (!Number.isInteger(index)) return
-    const currentModel = model
-    ++motionSeq // 作废旧预览/动作的异步回调，避免旧 motionFinish 释放新预览的焦点
-    previewActive = true
-    focusSuppressed = true
-    currentModel.internalModel?.focusController?.focus(0, 0, true)
-    currentModel.internalModel?.motionManager?.stopAllMotions?.()
-    void currentModel.motion(group, index, MotionPriority.FORCE)
-  }
-
   /** 让调试面板宽度与 canvas 同宽（canvas 尺寸变化/模型加载时同步）。 */
   function syncDebugPanelWidth(): void {
     if (!debugEl) return
@@ -1433,31 +1418,11 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
       }
       debugEl.appendChild(demoRow)
 
-      // 动画预览：原生动画下拉 + 播放按钮
-      const motionLabel = sectionLabel('动画预览')
-      debugEl.appendChild(motionLabel)
-      const motionSelect = document.createElement('select')
-      motionSelect.style.cssText = 'flex:1;min-width:0;background:#1c1e28;color:#e8eaf0;border:1px solid rgba(128,128,128,.3);border-radius:6px;font-size:12px;padding:4px 6px;outline:none'
-      motionSelect.onchange = () => previewMotion(motionSelect.value)
-      const motionPlay = document.createElement('button')
-      motionPlay.textContent = '播放'
-      motionPlay.style.cssText = 'padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-family:inherit;background:rgba(120,170,255,.28);color:#e8eaf0;border:1px solid rgba(120,170,255,.35);outline:none'
-      motionPlay.onmouseenter = () => { motionPlay.style.background = 'rgba(120,170,255,.4)' }
-      motionPlay.onmouseleave = () => { motionPlay.style.background = 'rgba(120,170,255,.28)' }
-      motionPlay.onclick = () => previewMotion(motionSelect.value)
-      const motionRow = document.createElement('div')
-      motionRow.style.cssText = 'display:flex;gap:6px;align-items:center'
-      motionRow.appendChild(motionSelect)
-      motionRow.appendChild(motionPlay)
-      debugMotionSelect = motionSelect
-      debugEl.appendChild(motionRow)
-
       // 状态信息：与上方区域分隔
       debugTextEl = document.createElement('div')
       debugTextEl.style.cssText = 'margin-top:10px;padding-top:8px;border-top:1px solid rgba(128,128,128,.18);color:#9aa5b8;font-size:11px;white-space:pre-wrap;word-break:break-all'
       debugEl.appendChild(debugTextEl)
       syncDebugPanelWidth()
-      refreshDebugMotionGroups()
       // 调试面板放在 petLayer 之前：显示在 canvas 上方；气泡在 petLayer 上方，
       // 通过 petLayer margin-top 把气泡空间让出来，使顺序为 调试面板 → 气泡 → canvas
       if (petLayer) {
@@ -1468,11 +1433,9 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
       }
       applyState(view)
     } else if (!show && debugEl) {
-      previewActive = false
       focusSuppressed = false
       debugEl.parentNode?.removeChild(debugEl)
       debugEl = null
-      debugMotionSelect = null
       debugTextEl = null
       if (petLayer) petLayer.style.marginTop = ''
     }
@@ -1501,7 +1464,10 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
       animeRenderer.setAuto('talk', cfg.talk ?? false)
       animeRenderer.setAuto('rand', cfg.rand ?? false)
       animeRenderer.setFlip(cfg.flip ?? false)
+      animeRenderer.setFpsLimit(cfg.fpsLimit ?? DEFAULT_FPS_LIMIT)
+      animeRenderer.setOpacity(cfg.opacity ?? DEFAULT_OPACITY)
     }
+    if (box) box.style.opacity = String(cfg.opacity ?? DEFAULT_OPACITY)
     // 同步浮动画板 UI（滑块/开关与 settings 配置保持一致）
     syncParamsPanelUI()
     // 尺寸：合并后重设画布 + 模型适配（避免连发 SSE 同步卡死主线程）

@@ -77,9 +77,9 @@ export const DEFAULT_MOTION_PRESETS: Record<string, MotionPreset> = {
   Idle: {
     target: { angleX: 0.05, angleY: 0.03, angleZ: 0.02, mouthOpen: 0, mouthForm: 0, eyeOpenL: 1, eyeOpenR: 1, brow: 0 },
   },
-  // 思考：明显歪头 + 眼神向上 + 微微皱眉（持续到状态切换）
+  // 思考：抬头 + 明显歪头 + 眼神斜向上飘（在想问题的感觉）
   Thinking: {
-    target: { angleX: 0.35, angleY: -0.25, angleZ: 0.2, eyeX: 0.2, eyeY: -0.5, brow: 0.4, mouthOpen: 0.06, mouthForm: -0.2 },
+    target: { angleX: 0.85, angleY: -0.35, angleZ: 0.5, eyeX: -0.55, eyeY: -0.9, brow: 0.7, mouthOpen: 0.1, mouthForm: -0.1, body: 0.18, physAmp: 1.2 },
   },
   Working: {
     target: { angleX: -0.2, angleY: 0.1, angleZ: -0.15, eyeX: -0.3, eyeY: -0.2, brow: 0.3, mouthOpen: 0 },
@@ -102,9 +102,9 @@ export const DEFAULT_MOTION_PRESETS: Record<string, MotionPreset> = {
     target: { eyeOpenL: 0.1, eyeOpenR: 0.1, brow: 0.5, mouthOpen: 0.6, mouthForm: 1, irisScale: 1.15, angleY: -0.1 },
     duration: 3500,
   },
-  // 等待：微微歪头 + 平静表情（持续到状态切换）
+  // 等待：眯眯眼 + 歪头放空（慵懒地等审批，不焦虑）
   Waiting: {
-    target: { angleX: 0.15, angleY: 0.08, brow: 0.1, mouthOpen: 0, mouthForm: 0.2, eyeOpenL: 0.8, eyeOpenR: 0.8 },
+    target: { angleX: 0.32, angleY: 0.1, angleZ: 0.18, brow: 0.2, eyeOpenL: 0.25, eyeOpenR: 0.25, eyeX: 0.35, eyeY: 0.08, mouthOpen: 0.04, mouthForm: 0.3, body: 0.08, physAmp: 1.1 },
   },
   // 互动（短暂动作后恢复状态）
   TapHead: {
@@ -201,6 +201,9 @@ export class Anime25DRenderer {
   /** 帧循环控制。 */
   private rafId = 0
   private last = 0
+  private lastFrame = 0
+  private frameInterval = 0
+  private opacityValue = 1
   private disposed = false
   private _onMotionFinish: (() => void) | null = null
   private _onBoundsChange: (() => void) | null = null
@@ -841,6 +844,19 @@ export class Anime25DRenderer {
     return this.flipped
   }
 
+  /** 设置 FPS 上限（0 = 不限制）。 */
+  setFpsLimit(fps: number): void {
+    this.frameInterval = Number.isFinite(fps) && fps > 0 ? 1000 / fps : 0
+  }
+
+  /** 设置宠物整体透明度（0~1）。
+   * 实际视觉由外层 box 统一控制（含气泡），这里仅保存值避免重复叠加。
+   */
+  setOpacity(opacity: number): void {
+    const v = Math.min(1, Math.max(0, Number.isFinite(opacity) ? opacity : 1))
+    this.opacityValue = v
+  }
+
   /** 设置自动动画开关。 */
   setAuto(key: keyof typeof this.auto, on: boolean): void {
     this.auto[key] = on
@@ -977,6 +993,9 @@ export class Anime25DRenderer {
     if (this.disposed) return
     this.rafId = requestAnimationFrame(this.tick)
     if (!this.layers.length || !this.A) return
+    // FPS 限制：达到目标间隔才渲染，动画计时仍按真实时间推进。
+    if (this.frameInterval > 0 && now - this.lastFrame < this.frameInterval - 1) return
+    this.lastFrame = now
     const dt = Math.min(0.05, (now - this.last) / 1000)
     this.last = now
     const t = now / 1000

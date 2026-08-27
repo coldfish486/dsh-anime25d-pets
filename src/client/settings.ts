@@ -15,6 +15,8 @@ import type { CustomModelEntry, SpatialTapOverride } from '../index.ts'
 import type { BuiltinPreset } from '../models.ts'
 import {
   ANIMATION_SLOTS,
+  DEFAULT_FPS_LIMIT,
+  DEFAULT_OPACITY,
   DEFAULT_SPATIAL_TAP,
   isSupportedModelLocation,
   type AnimationSlot,
@@ -36,6 +38,10 @@ export interface PetSettingsValue {
   /** 显示点击分区叠加层（空间回退色块）。 */
   showTapZones: boolean
   persona: string
+  /** FPS 限制（30 / 60 / 0=无限制）。 */
+  fpsLimit: number
+  /** 宠物透明度（0~1，含气泡）。 */
+  opacity: number
 }
 
 interface SettingsView {
@@ -57,6 +63,8 @@ const DEFAULT_VALUE: PetSettingsValue = {
   debug: false,
   showTapZones: false,
   persona: 'tsundere',
+  fpsLimit: DEFAULT_FPS_LIMIT,
+  opacity: DEFAULT_OPACITY,
 }
 
 /** 空间分区覆盖表单草稿（空字符串 = 该字段用全局默认）。 */
@@ -222,6 +230,35 @@ function headerLink(text: string, onClick: () => void): ReactElement {
       onClick()
     },
   }, text)
+}
+
+/**
+ * 滑块 pending 草稿 hook：
+ * - 拖动时只更新本地 draft，松手/失焦才提交
+ * - 提交后保留 pending，等配置回写成同一值时再清空，避免 UI 闪回旧值
+ */
+function usePendingRange(
+  currentValue: number,
+  onCommit: (value: number) => void,
+  equals: (a: number, b: number) => boolean = (a, b) => a === b,
+): { value: number; draft: number | null; setDraft: (v: number | null) => void; commit: () => void } {
+  const [draft, setDraft] = useState<number | null>(null)
+  const [pending, setPending] = useState<number | null>(null)
+  useEffect(() => {
+    if (draft === null) return
+    if (pending !== null && equals(currentValue, pending)) {
+      setDraft(null)
+      setPending(null)
+    }
+  }, [currentValue, draft, pending, equals])
+  const value = draft ?? pending ?? currentValue
+  const commit = () => {
+    if (draft === null) return
+    const next = draft
+    setPending(next)
+    onCommit(next)
+  }
+  return { value, draft, setDraft, commit }
 }
 
 const inputStyle: CSSProperties = {
@@ -931,15 +968,21 @@ export function PetSettingsSection(props: PetSettingsProps): ReactNode {
   }
 
   // 尺寸滑杆：拖动中本地草稿，松手/失焦提交（避免拖动写满 settings.yaml）
-  const [draftSize, setDraftSize] = useState<number | null>(null)
-  useEffect(() => { setDraftSize(null) }, [value.size])
-  const size = draftSize ?? value.size
-  const commitSize = () => {
-    if (draftSize === null) return
-    const nextSize = draftSize
-    enqueueWrite(() => [{ op: 'set', path: ['size'], value: nextSize }])
-    setDraftSize(null)
-  }
+  const sizeRange = usePendingRange(value.size, (next) => {
+    enqueueWrite(() => [{ op: 'set', path: ['size'], value: next }])
+  })
+  const size = sizeRange.value
+  const setDraftSize = sizeRange.setDraft
+  const commitSize = sizeRange.commit
+
+  // 透明度滑杆：与尺寸一样，拖动中只更新本地草稿，松手/失焦提交
+  const opacityRange = usePendingRange(value.opacity ?? DEFAULT_OPACITY, (next) => {
+    enqueueWrite(() => [{ op: 'set', path: ['opacity'], value: next }])
+  }, (a, b) => Math.abs(a - b) < 0.001)
+  const opacity = opacityRange.value
+  const setDraftOpacity = opacityRange.setDraft
+  const commitOpacity = opacityRange.commit
+
 
   // 自定义模型表单（添加 + 编辑）
   const [newName, setNewName] = useState('')
@@ -1008,7 +1051,9 @@ export function PetSettingsSection(props: PetSettingsProps): ReactNode {
     writeQueue.current = writeQueue.current.then(async () => {
       const current = stateRef.current.value ?? DEFAULT_VALUE
       const view = await writeSettings(compose(current))
-      if (view !== null) setSettingsState({ status: 'ready', value: view.value, writable: view.writable !== false })
+      if (view !== null) {
+        setSettingsState({ status: 'ready', value: view.value, writable: view.writable !== false })
+      }
     })
   }
 
@@ -1250,6 +1295,43 @@ export function PetSettingsSection(props: PetSettingsProps): ReactNode {
         onBlur: commitSize,
       }),
       createElement('span', { style: { width: 56, textAlign: 'right', color: '#888', fontSize: 12 } }, `${size}px`),
+    ),
+  ))
+
+  // 3. 帧率 / 透明度
+  const fpsOptions = [
+    { id: '30', name: '30 FPS' },
+    { id: '60', name: '60 FPS' },
+    { id: '0', name: '无限制' },
+  ]
+  children.push(createElement('div', { key: 'performance', style: rowStyle },
+    createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+      createElement('span', { style: { whiteSpace: 'nowrap' } }, '帧率'),
+      createElement(ThemeSelect, {
+        value: String(value.fpsLimit ?? DEFAULT_FPS_LIMIT),
+        options: fpsOptions,
+        disabled: !writable,
+        onChange: (id: string) => {
+          enqueueWrite(() => [{ op: 'set', path: ['fpsLimit'], value: Number(id) }])
+        },
+      }),
+    ),
+    createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 } },
+      createElement('span', { style: { whiteSpace: 'nowrap' } }, '透明度'),
+      createElement('input', {
+        type: 'range',
+        min: 0,
+        max: 1,
+        step: 0.05,
+        value: opacity,
+        disabled: !writable,
+        style: { flex: 1 },
+        onChange: (e: ChangeEvent<HTMLInputElement>) => setDraftOpacity(Number(e.target.value)),
+        onPointerUp: commitOpacity,
+        onKeyUp: commitOpacity,
+        onBlur: commitOpacity,
+      }),
+      createElement('span', { style: { width: 56, textAlign: 'right', color: '#888', fontSize: 12 } }, `${Math.round(opacity * 100)}%`),
     ),
   ))
 

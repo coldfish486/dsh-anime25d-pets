@@ -91,6 +91,12 @@ export type SpatialTapOverride = Partial<SpatialTapConfig> & {
  * 全局默认：头/腿仍整宽（兼容旧行为），身在中列、臂在两侧。
  * 内置 Hiyori 等可在 presets.jsonc 收紧为居中五矩形。
  */
+/** 默认帧率限制（0=无限制）。 */
+export const DEFAULT_FPS_LIMIT = 30
+
+/** 默认宠物透明度（0~1）。 */
+export const DEFAULT_OPACITY = 1
+
 export const DEFAULT_SPATIAL_TAP: SpatialTapConfig = {
   headMaxNy: 0.32,
   legMinNy: 0.58,

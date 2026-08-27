@@ -13,7 +13,7 @@ import Schema from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { PetService } from './service.ts'
 import { makePetRoutes, petPackageRoot, type SettingsRoutesApi } from './routes.ts'
-import type { CustomModelEntry } from './models.ts'
+import { DEFAULT_FPS_LIMIT, DEFAULT_OPACITY, type CustomModelEntry } from './models.ts'
 import { listBuiltinPresets, resolveModelUrl, resolveSpatialTap, resolveMotionMap } from './models-host.ts'
 import { PersonasStore } from './personas.ts'
 import { CustomModelsStore } from './custom-models.ts'
@@ -75,6 +75,10 @@ export interface Config {
   rand?: boolean
   /** 左右翻转桌宠（浮动画板，settings.yaml 持久化）。 */
   flip?: boolean
+  /** FPS 限制（30 / 60 / 0=无限制，settings.yaml 持久化）。 */
+  fpsLimit?: number
+  /** 宠物透明度（0~1，含气泡，settings.yaml 持久化）。 */
+  opacity?: number
   /** 选中人设 id：内置（tsundere/genki/…）或自定义人设 id（spec §3）。 */
   persona: string
 }
@@ -90,6 +94,8 @@ export const Config: Schema<Config> = Schema.object({
   talk: Schema.boolean().default(false),
   rand: Schema.boolean().default(false),
   flip: Schema.boolean().default(false),
+  fpsLimit: Schema.number().min(0).max(60).default(DEFAULT_FPS_LIMIT),
+  opacity: Schema.number().min(0).max(1).default(DEFAULT_OPACITY),
   persona: Schema.string().default('tsundere'),
 })
 

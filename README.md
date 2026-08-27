@@ -1,24 +1,21 @@
 # dsh-anime25d-pets 🐾
 
-**Anime2.5DRig × DSH 桌宠**：用 [Anime2.5DRig](https://github.com/852wa/Anime2.5DRig) 的 WebGL PSD 自动装配渲染引擎，为 [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness) 提供 2.5D 桌面宠物。
-
-只需准备一张**分图层 PSD**，即可获得带自动装配、发丝物理、表情动画、状态镜像和左右翻转的桌宠。
+**Anime2.5DRig × DSH 桌宠：借助 see-through，只凭一张干净背景的图像，即可获得带自动装配、发丝物理、表情动画和状态镜像的桌宠。**
 
 ![Demo](assets/demo.gif)
 
 ---
 
-## 项目介绍
+## 功能特色
 
-**解决什么问题？**
-- 原 dsh-live2d-pets 需要 Live2D 模型（`.model3.json`），模型制作门槛高、成本大
-- Anime2.5DRig 只需一张**分图层 PSD** 即可自动装配 WebGL 2.5D 动画
-- 本项目将两者结合：**用 PSD 自动装配替代 Live2D 渲染**，保留完整的桌宠交互框架
-
-**适合谁？**
-- 已有分图层 PSD 角色立绘、想把它变成 DSH 桌宠的用户
-- 不想使用 Live2D、偏好开源 WebGL 渲染的用户
-- 希望桌面宠物反映 agent 状态的 DSH 用户
+- 🎨 **一张图，自动成宠**：只需一张干净背景的角色图像，Anime2.5DRig 自动完成装配，无需 Live2D 模型或复杂的手工设置。
+- 🌊 **发丝物理 & 表情动画**：自动装配后自带发丝物理、眨眼、随机小动作、随机开口说话和状态表情。
+- 🖼️ **状态镜像**：真实反映 DSH Agent 的思考 / 空闲 / 出错 / 完成 / 等待审批五种状态。
+- 💡 **状态呼吸灯**：右下角呼吸灯随状态变色（绿/黄/红/蓝/紫），一眼掌握 Agent 状态。
+- 🔄 **左右翻转**：浮动面板一键镜像桌宠，同一个角色左右朝向自由切换。
+- ⚙️ **轻量调节面板**：鼠标悬停显示设置按钮，浮动面板可实时调整 34 个 2.5D 参数，并支持随机说话 / 随机动作 / 镜像翻转。
+- 🎛️ **性能与外观**：DSH 设置页可调整 FPS 限制（30 / 60 / 无限制）和透明度（0~1，含气泡）。
+- 🐾 **多模型 & 人设**：支持内置预设模型与自定义 PSD 模型，并为人设配置台词与状态表现。
 
 ---
 
@@ -50,7 +47,6 @@ dsh plugin --profile web add github:coldfish486/dsh-anime25d-pets
 allowBuilds:
   'dsh-anime25d-pets@xxxxxx': true
 ```
-
 
 ### 安装（源码开发）
 
@@ -93,7 +89,7 @@ dsh plugin --profile web remove dsh-anime25d-pets
 ### 最小配置示例
 
 1. **安装插件**（见上文）
-2. **启动 DSH**，右下角出现默认宠物（内置 Anime2.5DRig 示例 PSD 模型）
+2. **启动 DSH**，右下角出现默认宠物（内置 Anim2.5DRig 示例 PSD 模型）
 3. **添加自己的 PSD 模型**：
    - 打开 DSH 设置 →「桌宠配置」→「我的模型」
    - 填写名称和 `.psd` 地址（支持 HTTP URL 或本地绝对路径）
@@ -102,6 +98,7 @@ dsh plugin --profile web remove dsh-anime25d-pets
    - 将鼠标移到桌宠上，右下角会浮出 **⚙** 设置按钮，点击打开角色调节面板
    - 拖动滑块实时调整头部/眼睛/眉毛/嘴巴/发型/身体参数
    - 切换"随机开口说话""随机小动作"和"左右翻转桌宠"开关
+   - 在 DSH「桌宠配置」设置页可调整**帧率限制**（30/60/无限制）和**透明度**（含气泡）
    - 拖动桌宠到任意位置（自动保存）
 
 ### 可复现示例
@@ -118,6 +115,8 @@ anime25d-pet:
   talk: true               # 随机开口说话
   rand: false              # 随机小动作
   flip: false              # 左右镜像翻转
+  fpsLimit: 30             # 帧率限制（30 / 60 / 0=无限制）
+  opacity: 1.0             # 宠物透明度（0~1，含气泡）
   persona: tsundere
 ```
 
@@ -136,6 +135,8 @@ anime25d-pet:
 | `talk` | boolean | `false` | 随机开口说话 |
 | `rand` | boolean | `false` | 随机小动作 |
 | `flip` | boolean | `false` | 左右镜像翻转桌宠（浮动面板同步管理） |
+| `fpsLimit` | number | `30` | 帧率限制（30 / 60 / 0=无限制） |
+| `opacity` | number | `1` | 宠物透明度（0~1，含气泡，DSH 设置页可调） |
 | `persona` | string | `tsundere` | 人设 ID |
 | `developerMode` | boolean | `false` | 开发者模式 |
 | `debug` | boolean | `false` | 调试面板 |
