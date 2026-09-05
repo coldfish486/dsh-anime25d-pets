@@ -1,7 +1,3 @@
-# 构建产物（用户自行生成）
-/lib/
-dist/
-
 # 依赖
 node_modules/
 .pnpm-store/
@@ -9,7 +5,16 @@ node_modules/
 .bun-tmp/
 .bun-home/
 
-# 锁文件（用户自行生成）
+# 构建产物：lib/ 需要提交（发布时用户无需再 build）
+# 仅忽略 sourcemap 与临时构建文件
+lib/*.map
+dist/
+
+# 测试/覆盖率
+coverage/
+.nyc_output/
+
+# 锁文件（按项目实际使用保留 pnpm-lock.yaml）
 bun.lock
 bun.lockb
 package-lock.json
@@ -21,6 +26,9 @@ yarn.lock
 *.log
 .DS_Store
 Thumbs.db
+*.swp
+*.swo
+*.tsbuildinfo
 
 # DSH 本地配置
 *.local.jsonc

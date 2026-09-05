@@ -37,20 +37,14 @@
 
 ## 安装与卸载
 
-### 安装（推荐：从 GitHub 安装）
+### 安装（推荐：从 Release / GitHub 安装）
 
 ```bash
 dsh plugin --profile web add github:coldfish486/dsh-anime25d-pets
 ```
 
-> **注意：** DSH 安装（或安装后的 pnpm install）会**自动执行本插件的构建脚本**
-> （`prepare`/`prepack`），必须在 `pnpm-workspace.yaml` 的 `allowBuilds` 中
-> 允许本插件构建，否则不会生成 `lib/` 产物，插件运行时无法正常加载：
-
-```yaml
-allowBuilds:
-  'dsh-anime25d-pets@xxxxxx': true
-```
+> 本插件随包附带已编译好的 `lib/` 产物，安装后**无需额外构建**。
+> 如通过 Release 包或 npm 安装，同样直接可用。
 
 ### 安装（源码开发）
 
@@ -72,6 +66,8 @@ pnpm install
 pnpm build
 # 重新安装/重启 DSH
 ```
+
+> Release 正式包已包含 `lib/` 产物，普通用户升级时不需要本地构建。
 
 ### 禁用
 
