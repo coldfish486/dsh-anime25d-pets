@@ -125,7 +125,7 @@ function draftFromMotionMap(m?: MotionMap | null): MotionMap {
 }
 
 /** 获取 Anime2.5DRig 可用的动作组名列表（内置预设动作，不依赖外部 JSON）。 */
-async function fetchMotionGroups(_url: string): Promise<string[]> {
+async function fetchMotionGroups(): Promise<string[]> {
   // Anime2.5DRig 使用内置预设动作表，无需从远程模型 JSON 解析
   return [
     'Idle', 'Thinking', 'Working', 'Failed', 'Sad',
@@ -244,13 +244,15 @@ function usePendingRange(
 ): { value: number; draft: number | null; setDraft: (v: number | null) => void; commit: () => void } {
   const [draft, setDraft] = useState<number | null>(null)
   const [pending, setPending] = useState<number | null>(null)
+  const equalsRef = useRef(equals)
+  equalsRef.current = equals
   useEffect(() => {
     if (draft === null) return
-    if (pending !== null && equals(currentValue, pending)) {
+    if (pending !== null && equalsRef.current(currentValue, pending)) {
       setDraft(null)
       setPending(null)
     }
-  }, [currentValue, draft, pending, equals])
+  }, [currentValue, draft, pending])
   const value = draft ?? pending ?? currentValue
   const commit = () => {
     if (draft === null) return
@@ -337,13 +339,6 @@ function motionMapFields(
   )
 }
 
-const sectionTitleStyle: CSSProperties = {
-  margin: '16px 0 8px',
-  fontSize: 13,
-  fontWeight: 600,
-  color: '#888',
-}
-
 /** 下拉选项（与设置页其它控件同色板，避免原生 select 的白框/底线）。 */
 interface ThemeSelectOption {
   id: string
@@ -354,15 +349,6 @@ interface ThemeSelectProps {
   value: string
   options: ThemeSelectOption[]
   disabled?: boolean
-  onChange: (id: string) => void
-  placeholder?: string
-}
-
-interface ThemeRadioGroupProps {
-  value: string
-  options: ThemeSelectOption[]
-  disabled?: boolean
-  name: string
   onChange: (id: string) => void
 }
 
@@ -437,32 +423,6 @@ function ThemeRadioOption(props: ThemeRadioOptionProps): ReactElement {
   },
     createElement(ThemeRadioDot, { selected }),
     children,
-  )
-}
-
-/**
- * 自绘圆形单选组：一行多档；圆点走 ThemeRadioDot。
- */
-function ThemeRadioGroup(props: ThemeRadioGroupProps): ReactElement {
-  const { value, options, disabled, name, onChange } = props
-  return createElement('div', {
-    role: 'radiogroup',
-    'aria-label': name,
-    style: {
-      display: 'flex',
-      flexWrap: 'wrap',
-      alignItems: 'center',
-      gap: '10px 18px',
-      opacity: disabled ? 0.55 : 1,
-    },
-  },
-    options.map((o) => createElement(ThemeRadioOption, {
-      key: o.id,
-      selected: o.id === value,
-      disabled,
-      onSelect: () => onChange(o.id),
-      children: createElement('span', null, o.name),
-    })),
   )
 }
 
@@ -1010,7 +970,7 @@ export function PetSettingsSection(props: PetSettingsProps): ReactNode {
     if (activeNewPanel !== 'motion' || !isSupportedModelLocation(newUrl)) return
     let alive = true
     setNewMotionStatus('loading')
-    fetchMotionGroups(newUrl)
+    fetchMotionGroups()
       .then((groups) => {
         if (!alive) return
         setNewMotionGroups(groups)
@@ -1029,7 +989,7 @@ export function PetSettingsSection(props: PetSettingsProps): ReactNode {
     if (activeEditPanel !== 'motion' || !isSupportedModelLocation(editUrl)) return
     let alive = true
     setEditMotionStatus('loading')
-    fetchMotionGroups(editUrl)
+    fetchMotionGroups()
       .then((groups) => {
         if (!alive) return
         setEditMotionGroups(groups)
@@ -1186,6 +1146,7 @@ export function PetSettingsSection(props: PetSettingsProps): ReactNode {
   const customRows = custom.map((c) => {
     const hasOverride = !!c.spatialTap && Object.keys(c.spatialTap).length > 0
     const hasMotionMap = !!c.animationMap && Object.keys(c.animationMap).length > 0
+      const tags = [hasOverride ? '分区已覆盖' : null, hasMotionMap ? '动画已映射' : null].filter(Boolean)
     if (editId === c.id) {
       return createElement('div', { key: c.id, style: { ...rowStyle, display: 'flex', flexDirection: 'column', gap: 6 } },
         createElement('div', { style: { display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' } },
@@ -1235,8 +1196,8 @@ export function PetSettingsSection(props: PetSettingsProps): ReactNode {
       `custom-${c.id}`,
       value.model === c.id,
       () => enqueueWrite(() => [{ op: 'set', path: ['model'], value: c.id }]),
-      [hasOverride ? '分区已覆盖' : null, hasMotionMap ? '动画已映射' : null].filter(Boolean).length > 0
-        ? `${c.name} · ${[hasOverride ? '分区已覆盖' : null, hasMotionMap ? '动画已映射' : null].filter(Boolean).join(' · ')}`
+      tags.length > 0
+        ? `${c.name} · ${tags.join(' · ')}`
         : c.name,
       !writable,
       createElement('span', { key: 'actions' },

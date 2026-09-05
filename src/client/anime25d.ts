@@ -203,19 +203,14 @@ export class Anime25DRenderer {
   private last = 0
   private lastFrame = 0
   private frameInterval = 0
-  private opacityValue = 1
   private disposed = false
   private _onMotionFinish: (() => void) | null = null
-  private _onBoundsChange: (() => void) | null = null
 
   /** 模型原始尺寸（用于适配）。 */
   private baseW = 0
   private baseH = 0
   /** 模型实际内容包围盒（所有图层的最小外接矩形）。 */
   private contentBounds = { x: 0, y: 0, width: 0, height: 0 }
-
-  /** 已加载的 PSD 数据（用于调试/重载）。 */
-  private lastPsd: any = null
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
@@ -463,7 +458,6 @@ export class Anime25DRenderer {
     } else {
       this.contentBounds = { x: 0, y: 0, width: this.CW, height: this.CH }
     }
-    this._onBoundsChange?.()
   }
 
   /** 从 PSD 数据加载模型。 */
@@ -475,7 +469,7 @@ export class Anime25DRenderer {
       useImageData: true,
       skipThumbnail: true,
     })
-    this.lastPsd = psd
+    
     const pre = window.Rigger.cleanPsdLayers(psd)
     const options = this.genericOpts()
     const rig = window.Rigger.buildRig(psd, options)
@@ -488,22 +482,6 @@ export class Anime25DRenderer {
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const buf = await res.arrayBuffer()
     await this.loadPsdData(buf)
-  }
-
-  /** 调整渲染尺寸（同步 WebGL 视口和内部坐标系统）。 */
-  resize(width: number, height: number): void {
-    this.canvas.width = width
-    this.canvas.height = height
-    // 同步内部画布尺寸，使 WebGL 视口和坐标变换与 canvas 实际尺寸一致
-    const scaleX = width / this.CW
-    const scaleY = height / this.CH
-    this.CW = width
-    this.CH = height
-    // 更新锚点/物理参数按新尺寸缩放
-    const fs = this.FS
-    this.FS = fs * Math.min(scaleX, scaleY)
-    // 通知尺寸变化
-    this._onBoundsChange?.()
   }
 
   /** 计算通用闭眼/闭口差分选项。 */
@@ -839,22 +817,9 @@ export class Anime25DRenderer {
     this.flipped = !!on
   }
 
-  /** 查询当前是否已镜像翻转。 */
-  get flip(): boolean {
-    return this.flipped
-  }
-
   /** 设置 FPS 上限（0 = 不限制）。 */
   setFpsLimit(fps: number): void {
     this.frameInterval = Number.isFinite(fps) && fps > 0 ? 1000 / fps : 0
-  }
-
-  /** 设置宠物整体透明度（0~1）。
-   * 实际视觉由外层 box 统一控制（含气泡），这里仅保存值避免重复叠加。
-   */
-  setOpacity(opacity: number): void {
-    const v = Math.min(1, Math.max(0, Number.isFinite(opacity) ? opacity : 1))
-    this.opacityValue = v
   }
 
   /** 设置自动动画开关。 */
@@ -883,11 +848,6 @@ export class Anime25DRenderer {
         this.manualSet.delete('body')
       }
     }
-  }
-
-  /** 获取自动开关状态。 */
-  getAuto(key: keyof typeof this.auto): boolean {
-    return this.auto[key]
   }
 
   /** 获取模型原始尺寸。 */
@@ -927,15 +887,6 @@ export class Anime25DRenderer {
     return []
   }
 
-  /** 动画映射定义（用于调试面板）。 */
-  get motionDefinitions(): Record<string, unknown> {
-    const defs: Record<string, unknown> = {}
-    for (const [name] of Object.entries(DEFAULT_MOTION_PRESETS)) {
-      defs[name] = [{ name, file: name }]
-    }
-    return defs
-  }
-
   /** 设置动作完成回调。 */
   set onMotionFinish(fn: (() => void) | null) {
     this._onMotionFinish = fn
@@ -943,15 +894,6 @@ export class Anime25DRenderer {
 
   get onMotionFinish(): (() => void) | null {
     return this._onMotionFinish
-  }
-
-  /** 设置包围盒变化回调。 */
-  set onBoundsChange(fn: (() => void) | null) {
-    this._onBoundsChange = fn
-  }
-
-  get onBoundsChange(): (() => void) | null {
-    return this._onBoundsChange
   }
 
   /** 销毁渲染器。 */
@@ -969,7 +911,7 @@ export class Anime25DRenderer {
     }
     this.layers = []
     this._onMotionFinish = null
-    this._onBoundsChange = null
+    
     if (this.motionTimer) {
       clearTimeout(this.motionTimer)
       this.motionTimer = null
@@ -1186,10 +1128,9 @@ export class Anime25DRenderer {
   }
 }
 
-/** 便捷工厂：在 canvas 上创建 Anime2.5D 渲染器。 */
-export function createAnime25DRenderer(canvas: HTMLCanvasElement): Anime25DRenderer {
-  return new Anime25DRenderer(canvas)
-}
+
+
+
 
 /** Anime2.5DRig 滑块配置（用于设置面板）。 */
 export interface SliderDef {

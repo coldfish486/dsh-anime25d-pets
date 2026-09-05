@@ -39,7 +39,7 @@ function petHomeDir(): string {
 }
 
 function petFile(): string {
-  return join(petHomeDir(), 'live2d-pet.json')
+  return join(petHomeDir(), 'anime25d-pet.json')
 }
 
 /** 读取持久化显示配置；不存在或损坏时回退默认值。 */

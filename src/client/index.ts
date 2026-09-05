@@ -201,7 +201,6 @@ function classifyTap(
   hits: readonly string[],
   localX: number,
   localY: number,
-  _hitAreaKeys: readonly string[],
   bounds: { x: number; y: number; width: number; height: number } | null,
   tap: SpatialTapConfig,
 ): TapPart | null {
@@ -381,20 +380,22 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
   /** 当前模型生效的状态/互动动画映射（SSE config.motionMap；默认 DEFAULT_MOTION_MAP）。 */
   let motionMap: MotionMap = { ...DEFAULT_MOTION_MAP }
   let zoneRaf = 0
-  let app: {
-    destroy(remove?: boolean): void
-    ticker: {
-      addOnce(fn: () => void): unknown
-      start(): unknown
-      stop(): unknown
-      maxFPS?: number
+    /*
+  
+    
+    
+      
+      
+      
+      
     }
-    renderer: { resize(width: number, height: number): unknown }
-  } | null = null
+    
+    */
   /** Anime2.5DRig 渲染器实例。 */
   let animeRenderer: Anime25DRenderer | null = null
   let model: ModelLike | null = null
-  let hitAreas: string[] = []
+    let hitAreas: string[] = []
+  
   let currentModelUrl: string | null = null
   let fallbackShown = false
   let fallbackEl: HTMLDivElement | null = null
@@ -772,8 +773,8 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
     stopZoneLoop()
     if (animeRenderer) { try { animeRenderer.destroy() } catch { /* 已销毁 */ } }
     animeRenderer = null
-    if (app) { try { app.destroy(true) } catch { /* 已销毁 */ } }
-    app = null
+    
+    
     model = null
     hitAreas = []
     baseModelW = 0
@@ -896,8 +897,12 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
       syncDebugPanelWidth()
 
       // 动作真正播完信号：motion() 的 Promise 在开始时即 resolve，不能作为恢复/解除 focus 的时机
+
       detachMotionFinish?.()
-      detachMotionFinish = () => { renderer.onMotionFinish = null }
+      loaded.internalModel?.motionManager?.on?.('motionFinish', handleMotionFinish)
+        detachMotionFinish = () => {
+        loaded.internalModel?.motionManager?.off?.('motionFinish', handleMotionFinish)
+      }
 
       fitModel(pos.size)
 
@@ -1465,7 +1470,7 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
       animeRenderer.setAuto('rand', cfg.rand ?? false)
       animeRenderer.setFlip(cfg.flip ?? false)
       animeRenderer.setFpsLimit(cfg.fpsLimit ?? DEFAULT_FPS_LIMIT)
-      animeRenderer.setOpacity(cfg.opacity ?? DEFAULT_OPACITY)
+      
     }
     if (box) box.style.opacity = String(cfg.opacity ?? DEFAULT_OPACITY)
     // 同步浮动画板 UI（滑块/开关与 settings 配置保持一致）
@@ -1553,7 +1558,7 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
         const b = model.getBounds?.()
         if (b && b.width > 0 && b.height > 0) bounds = { x: b.x, y: b.y, width: b.width, height: b.height }
       } catch { /* 无包围盒则仅按命中名 */ }
-      const part = classifyTap(hits, localX, localY, hitAreas, bounds, spatialTap)
+      const part = classifyTap(hits, localX, localY, bounds, spatialTap)
       if (part === null) return
       const poolKey = `tap${part[0].toUpperCase()}${part.slice(1)}` as 'tapHead' | 'tapLeg' | 'tapArm' | 'tapBody'
       const line = pickLine(activeCopy[poolKey], lastTapLine[poolKey])
@@ -1697,9 +1702,6 @@ export function apply(ctx: ClientContext): void {
     }
   }
 
-  // 桌宠配置设置页（settings.section，spec §2）：开关/尺寸/人设/模型列表/调试，
-  // 读写经插件自身 API（/api/anime25d-pet/settings，Host 直连 ctx.settings；
-  // 不走 settingsScope wire，见 docs/research/settings-tab.md「设置服务不可用」根因）。
   // 桌宠配置设置页（settings.section，spec §2）：开关/尺寸/人设/模型列表/调试，
   // 读写经插件自身 API（/api/anime25d-pet/settings，Host 直连 ctx.settings；
   // 不走 settingsScope wire，见 docs/research/settings-tab.md「设置服务不可用」根因）。
