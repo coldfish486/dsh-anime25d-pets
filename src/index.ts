@@ -8,7 +8,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { settingsNamespace, type SettingsPathOp } from '@deepseek-ai/dsh-settings'
+import type { SettingsNamespace, SettingsPathOp } from '@deepseek-ai/dsh-settings'
 import Schema from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { PetService } from './service.ts'
@@ -49,8 +49,9 @@ export const name = 'anime25d-pet'
 /** settings namespace（settings.yaml 用户层 section 名）。 */
 export const SETTINGS_NAMESPACE = 'anime25d-pet'
 
-/** 品牌化 namespace（dsh-settings 类型约束）。 */
-const NS = settingsNamespace(SETTINGS_NAMESPACE)
+/** settings namespace（DSH 0.1.2+ 直接使用字符串，运行时不再导出 settingsNamespace；
+ * 这里仅做类型断言以兼容旧版 dsh-settings 的 Branded<SettingsNamespace>。 */
+const NS = SETTINGS_NAMESPACE as SettingsNamespace
 
 export interface Config {
   /** 插件总开关。 */

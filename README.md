@@ -23,11 +23,15 @@
 
 | 项目 | 要求 |
 |------|------|
-| DeepSeek Harness (DSH) | 需支持 DSH 插件 API（`dsh.profile.bundles` 机制） |
+| DeepSeek Harness (DSH) | 已验证 **DSH 0.1.2-rc.1** |
 | Node.js | `^22.19.0 || >=24.0.0` |
 | 包管理器 | pnpm / npm / bun |
 | 浏览器 | Chrome / Edge / Firefox / Safari（需支持 WebGL） |
-| 最后验证日期 | 2026-08-23 |
+| 最后验证日期 | 2026-09-05 |
+
+> **DSH 0.1.2-rc.1 兼容说明**：该版本移除了 `@deepseek-ai/dsh-settings` 的运行时导出
+> `settingsNamespace`。本插件已改为直接使用 namespace 字符串，并保留类型层面的
+> `SettingsNamespace` 兼容层；因此同时兼容 `0.1.0-rc.6` 与 `0.1.2-rc.1`。
 
 ---
 
