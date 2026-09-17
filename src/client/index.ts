@@ -33,6 +33,14 @@ import {
   type MotionMap,
   type SpatialTapConfig,
 } from '../models.ts'
+import {
+  hasPendingInteraction,
+  resolvePetState,
+  SKIP_SUBAGENT_PENDING,
+  type PendingInteractionsLike,
+  type PendingSignal,
+  type SessionsLike,
+} from './pending-state.ts'
 
 /** 注入所需服务。 */
 export const inject = ['slots']
@@ -272,9 +280,10 @@ function loadScript(src: string): Promise<void> {
 }
 
 /** 零尺寸锚点组件：占位 shell.overlay 席位，实际渲染在 popover 顶层容器。 */
-function PetAnchor(): ReturnType<typeof createElement> {
+function PetAnchor(props: { ctx: ClientContext }): ReturnType<typeof createElement> {
   const ref = useRef<HTMLDivElement | null>(null)
-  useEffect(() => boot(ref.current), [])
+  const { ctx } = props
+  useEffect(() => boot(ref.current, ctx), [ctx])
   return createElement('div', { ref, style: { width: 0, height: 0 } })
 }
 
@@ -340,7 +349,7 @@ function clearParamsStorage(): void {
   }).catch(() => {})
 }
 
-function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
+function boot(anchor: HTMLDivElement | null, ctx: ClientContext): (() => void) | undefined {
   if (!anchor) return undefined
   const cleanup: Array<() => void> = []
   const pushCleanup = (fn: () => void) => { cleanup.push(fn) }
@@ -437,6 +446,37 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
   let activeCopy: CopyTable = resolvePersonaCopy(DEFAULT_PERSONA_ID, [])
   let lastCustomPersonas: PetStateView['customPersonas'] = []
   let personaDefsVersion = -1
+
+  // DSH 0.1.5：待审批 / 待回答 / 待计划确认由客户端 `uiSession.pendingInteractions`
+  // 统一发布（旧版挂在会话列表行 `pendingInteraction` 上，已被移除）；这与
+  // @dsh-external/dsh-sound-cue「需要操作」提示音失效同源。桌宠的 waiting 判定
+  // 以该存储为准，Host 的 approval/request 仅作旧版（无 uiSession）回落。
+  // 软依赖：不写进 inject（旧版 DSH 无 uiSession，硬依赖会导致插件不激活），
+  // 改用 ctx.inject 等它出现；始终缺失时 available=false，行为与旧版一致。
+  const pending: PendingSignal = { available: false, active: false }
+  const pendingFiber = ctx.inject(['uiSession'], (uiCtx: ClientContext) => {
+    const uiSession = uiCtx.get('uiSession') as PendingInteractionsLike | undefined
+    const store = uiSession?.pendingInteractions
+    if (store === undefined) return
+    const sessions = uiCtx.get('sessions') as SessionsLike | undefined
+    pending.available = true
+    pending.active = hasPendingInteraction(uiSession, sessions, SKIP_SUBAGENT_PENDING)
+    // uiSession 晚于首帧就绪时补应用一次；DOM 未就绪则交给 boot 主流程稍后应用，
+    // 避免在这里提前写入 lastState 而吞掉首次状态气泡/动作。
+    if (bubble) applyState(view)
+    const unsubscribePending = store.subscribe(() => {
+      const next = hasPendingInteraction(uiSession, sessions, SKIP_SUBAGENT_PENDING)
+      if (next === pending.active) return
+      pending.active = next
+      applyState(view)
+    })
+    return () => {
+      unsubscribePending()
+      pending.available = false
+      pending.active = false
+    }
+  })
+  pushCleanup(() => { void pendingFiber.dispose() })
 
   /** 合并 enabled/隐藏/失焦状态，启停渲染循环（spec §7：暂停渲染保留最后画面）。 */
   function syncTicker(): void {
@@ -642,7 +682,13 @@ function boot(anchor: HTMLDivElement | null): (() => void) | undefined {
   }
 
   function applyState(next: PetStateView | null): void {
-    const state = demoState ?? next?.state ?? 'idle'
+    // 待交互状态以客户端存储为准（见 pending-state.ts）；Host 状态作回落。
+    const state = resolvePetState(
+      next?.state ?? 'idle',
+      next?.agent ?? 'idle',
+      pending,
+      demoState,
+    )
     // 人设热更新（spec §3）：persona 或自定义清单变化时重算台词表；
     // 若正处于长状态，当前阶段气泡立即换新语气重绘（不打断计时节奏）
     const personaId = next?.config.persona || DEFAULT_PERSONA_ID
@@ -1686,7 +1732,7 @@ export function apply(ctx: ClientContext): void {
   if (slots === undefined) return
   slots.inject('shell.overlay', () => slots.register(
     { name: 'shell.overlay', id: 'anime25d-pet' },
-    () => createElement(PetAnchor),
+    () => createElement(PetAnchor, { ctx }),
   ))
 
   // 「自定义人设 ↗」直达打开（spec §2）：优先经 DSH workspaces.openPath 用系统

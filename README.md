@@ -23,15 +23,21 @@
 
 | 项目 | 要求 |
 |------|------|
-| DeepSeek Harness (DSH) | 已验证 **DSH 0.1.2-rc.1** |
+| DeepSeek Harness (DSH) | 已验证 **0.1.5-rc.1** |
 | Node.js | `^22.19.0 || >=24.0.0` |
 | 包管理器 | pnpm / npm / bun |
 | 浏览器 | Chrome / Edge / Firefox / Safari（需支持 WebGL） |
-| 最后验证日期 | 2026-09-05 |
+| 最后验证日期 | 2026-09-17 |
 
 > **DSH 0.1.2-rc.1 兼容说明**：该版本移除了 `@deepseek-ai/dsh-settings` 的运行时导出
 > `settingsNamespace`。本插件已改为直接使用 namespace 字符串，并保留类型层面的
 > `SettingsNamespace` 兼容层；因此同时兼容 `0.1.0-rc.6` 与 `0.1.2-rc.1`。
+
+> **DSH 0.1.5-rc.x 兼容说明**：该版本移除了会话列表行上的
+> `SessionSummary.pendingInteraction`，待审批 / 待提问 / 待计划确认改由客户端
+> `uiSession.pendingInteractions` 统一发布。桌宠的「等待审批」状态已改为订阅该
+> 客户端存储（`src/client/pending-state.ts`），并保留对旧版 Host
+> `approval/request` 的回落；`dsh.client.inject` 同步改为真实包名。
 
 ---
 
