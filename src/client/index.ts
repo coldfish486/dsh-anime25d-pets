@@ -16,7 +16,7 @@
  */
 
 import { createElement, useEffect, useRef } from 'react'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { ReactNode } from 'react'
 import type { PetState, PetStateView } from '../service.ts'
 import { PetSettingsSection } from './settings.ts'
@@ -98,7 +98,8 @@ const PET_API = '/api/anime25d-pet'
 /** 最近一次收到的 PetStateView（loadParamsStorage 默认数据源）。 */
 let currentViewRef: PetStateView | null = null
 
-/** 最小 slots 服务结构类型（运行时由 DSH 提供）。 */
+/** 最小 slots 服务结构类型（DSH 0.2.0-rc.2 由 `@deepseek-ai/dsh-client-ui-renderer`
+ *  的 SlotRegistry 提供；`register`/`inject` 形状与 0.1.x 一致）。 */
 interface SlotsLike {
   inject(key: string, callback: () => () => void): () => void
   register(
@@ -107,7 +108,7 @@ interface SlotsLike {
       id: string
       order?: number
       label?: string | (() => string)
-      /** 设置导航图标：ReactNode 或按尺寸渲染（与 better-sidebar 等同款约定）。 */
+      /** 设置导航图标：平台 0.2.0-rc.2 仍未投影该字段（图标由 DOM 层替换，见 paw-icon.ts）。 */
       icon?: ReactNode | ((size: number) => ReactNode)
       inject?: () => Record<string, unknown>
     },
@@ -447,16 +448,17 @@ function boot(anchor: HTMLDivElement | null, ctx: ClientContext): (() => void) |
   let lastCustomPersonas: PetStateView['customPersonas'] = []
   let personaDefsVersion = -1
 
-  // DSH 0.1.5：待审批 / 待回答 / 待计划确认由客户端 `uiSession.pendingInteractions`
-  // 统一发布（旧版挂在会话列表行 `pendingInteraction` 上，已被移除）；这与
-  // @dsh-external/dsh-sound-cue「需要操作」提示音失效同源。桌宠的 waiting 判定
-  // 以该存储为准，Host 的 approval/request 仅作旧版（无 uiSession）回落。
+  // DSH 0.2.0-rc.2：待审批 / 待回答 / 待计划确认由客户端 `uiSession.sessionStatus`
+  // 统一发布（`Map<sessionId, { running, pendingInteraction, completionUnread }>`；
+  // 0.1.5–0.1.7 的 `pendingInteractions` Map 已被取代，更早则挂在会话列表行上）。
+  // 这与 @dsh-external/dsh-sound-cue「需要操作」提示音失效同源。桌宠的 waiting
+  // 判定以该存储为准，Host 的 approval/request 仅作旧版（无 uiSession）回落。
   // 软依赖：不写进 inject（旧版 DSH 无 uiSession，硬依赖会导致插件不激活），
   // 改用 ctx.inject 等它出现；始终缺失时 available=false，行为与旧版一致。
   const pending: PendingSignal = { available: false, active: false }
   const pendingFiber = ctx.inject(['uiSession'], (uiCtx: ClientContext) => {
     const uiSession = uiCtx.get('uiSession') as PendingInteractionsLike | undefined
-    const store = uiSession?.pendingInteractions
+    const store = uiSession?.sessionStatus
     if (store === undefined) return
     const sessions = uiCtx.get('sessions') as SessionsLike | undefined
     pending.available = true
@@ -1735,14 +1737,18 @@ export function apply(ctx: ClientContext): void {
     () => createElement(PetAnchor, { ctx }),
   ))
 
-  // 「自定义人设 ↗」直达打开（spec §2）：优先经 DSH workspaces.openPath 用系统
-  // 默认程序打开人设文件；服务不存在/无权限/打开失败由设置页弹层兜底。
+  // 「自定义人设 ↗」直达打开（spec §2）：DSH 0.2.0-rc.2 起 Host 路径打开走
+  // `ctx.remote.session.openWorkspacePath`（旧的 workspaces.openPath 已移除）；
+  // 服务不存在 / 无桌面 / 打开失败由设置页弹层兜底。
   const openPath = async (path: string): Promise<boolean> => {
     try {
-      const workspaces = ctx.get('workspaces') as { openPath?: (p: string) => Promise<void> } | undefined
-      if (!workspaces?.openPath) return false
-      await workspaces.openPath(path)
-      return true
+      const remote = ctx.get('remote') as {
+        session?: { openWorkspacePath?: (req: { path: string }) => Promise<{ ok: boolean }> }
+      } | undefined
+      const open = remote?.session?.openWorkspacePath
+      if (typeof open !== 'function') return false
+      const result = await open({ path })
+      return result?.ok === true
     } catch {
       return false
     }

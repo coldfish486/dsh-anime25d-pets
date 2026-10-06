@@ -1,14 +1,16 @@
 /**
- * 桌宠「待交互」兼容层（DSH 0.1.5）。
+ * 桌宠「待交互」兼容层（DSH 0.2.0-rc.2）。
  *
- * DSH `0.1.0-rc.8` → `0.1.5` 改了待交互数据的发布位置：
- * - 旧版：挂在会话列表行上（`SessionSummary.pendingInteraction`，会话行字段）。
- * - 新版：行上**已移除**该字段，改由客户端 `@deepseek-ai/dsh-client-ui-session`
- *   提供的 `uiSession.pendingInteractions` 根存储统一发布
- *   （`Map<sessionId, interaction>`，`interaction.kind ∈ approval | question | plan-review`）。
+ * 待交互数据的发布位置在 DSH 里改过两次：
+ * - `0.1.0-rc.8` 及更早：挂在会话列表行上（`SessionSummary.pendingInteraction`）。
+ * - `0.1.5` → `0.1.7`：行字段移除，改由客户端 `@deepseek-ai/dsh-client-ui-session`
+ *   的 `uiSession.pendingInteractions` 根存储统一发布（`Map<sessionId, interaction>`）。
+ * - `0.2.0-rc.2`：该 Map 又被 `uiSession.sessionStatus` 取代——一个
+ *   `Map<sessionId, { running, pendingInteraction, completionUnread }>` 的只读快照，
+ *   `pendingInteraction` 为 `undefined` 表示该会话当前无待交互。
  *
  * 桌宠原先把 waiting（等待审批）状态完全交给 Host 侧的 `approval/request` 事件，
- * 只能覆盖「审批」一种待交互，且与 0.1.5 的客户端权威数据源不同步。这与
+ * 只能覆盖「审批」一种待交互，且与客户端的权威数据源不同步。这与
  * `@dsh-external/dsh-sound-cue`「需要操作」提示音静默失效是同一个根因。
  *
  * 本模块只做纯函数转换（不依赖 DOM / React），便于单测。
@@ -23,9 +25,16 @@ export interface ReadonlyStore<T> {
     getSnapshot(): T;
     subscribe(listener: () => void): () => void;
 }
-/** `uiSession` 服务（DSH 0.1.5+）：暴露待交互根存储。 */
+/** 单个会话的 UI 状态事实（`uiSession.sessionStatus` 值）。 */
+export interface SessionStatusLike {
+    readonly running?: boolean | undefined;
+    /** 当前最高优先级的待交互；`undefined` 表示该会话无待交互。 */
+    readonly pendingInteraction?: unknown;
+    readonly completionUnread?: boolean | undefined;
+}
+/** `uiSession` 服务（DSH 0.2.0-rc.2+）：暴露统一会话状态根存储。 */
 export interface PendingInteractionsLike {
-    pendingInteractions?: ReadonlyStore<Map<string, unknown>>;
+    sessionStatus?: ReadonlyStore<ReadonlyMap<string, SessionStatusLike>>;
 }
 /** `sessions` 服务的列表快照（这里只用 `byId[*].origin` 过滤子代理会话）。 */
 export interface SessionsListSnapshot {
@@ -35,17 +44,18 @@ export interface SessionsListSnapshot {
     } | undefined>;
     current?: string;
 }
-/** `sessions` 服务（DSH 0.1.5+，列表 store）。 */
+/** `sessions` 服务（列表 store）。 */
 export interface SessionsLike {
     list?: ReadonlyStore<SessionsListSnapshot>;
 }
 /**
  * 当前是否存在待用户操作的会话。
  *
- * - 无 `uiSession` / 无 `pendingInteractions`（DSH < 0.1.5）→ `false`，
+ * - 无 `uiSession` / 无 `sessionStatus`（旧版 DSH）→ `false`，
  *   调用方回落到 Host 自己的 waiting 判定；
- * - `skipSubagents` 为 `true` 时忽略子代理会话；
- * - 其余情况：待交互 Map 非空即视为 waiting。
+ * - 只统计 `pendingInteraction !== undefined` 的会话（`sessionStatus` 对每个
+ *   已知会话都有一条记录，与旧的「Map 非空即有等待」语义不同）；
+ * - `skipSubagents` 为 `true` 时忽略子代理会话。
  */
 export declare function hasPendingInteraction(uiSession: PendingInteractionsLike | undefined, sessions: SessionsLike | undefined, skipSubagents?: boolean): boolean;
 /** 待交互读取状态：`available === false` 表示客户端存储不可用（旧版 DSH）。 */
@@ -59,7 +69,7 @@ export interface PendingSignal {
  * 计算桌宠最终展示状态。
  *
  * Host（`PetService`）仍按 `agent/status` / `agent/error` / `agent/turn-stopping` /
- * `approval/request` 推送状态，但 0.1.5 的待交互已统一到客户端存储，因此：
+ * `approval/request` 推送状态，但待交互已统一到客户端存储，因此：
  * - 调试态（`demo`）优先，保持原有「状态演示」行为；
  * - 客户端存储可用时，它是 waiting 的**权威来源**（覆盖 Host 状态，覆盖
  *   approval / question / plan-review 三种待交互）；

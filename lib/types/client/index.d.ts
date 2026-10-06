@@ -14,7 +14,7 @@
  *   尺寸→重设画布与模型适配、帧率→ticker.maxFPS、调试→动态面板、模型→按 modelUrl 重载（spec §2/§6/§7）
  * @module dsh-anime25d-pets/client
  */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client';
+import type { Context as ClientContext } from '@deepseek-ai/cordis';
 /** 注入所需服务。 */
 export declare const inject: string[];
 /** 插件入口。 */

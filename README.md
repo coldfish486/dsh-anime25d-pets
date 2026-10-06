@@ -23,21 +23,26 @@
 
 | 项目 | 要求 |
 |------|------|
-| DeepSeek Harness (DSH) | 已验证 **0.1.5-rc.1** |
+| DeepSeek Harness (DSH) | 已验证 **DSH 0.2.0-rc.2** |
 | Node.js | `^22.19.0 || >=24.0.0` |
 | 包管理器 | pnpm / npm / bun |
 | 浏览器 | Chrome / Edge / Firefox / Safari（需支持 WebGL） |
-| 最后验证日期 | 2026-09-17 |
+| 最后验证日期 | 2026-10-06 |
 
-> **DSH 0.1.2-rc.1 兼容说明**：该版本移除了 `@deepseek-ai/dsh-settings` 的运行时导出
-> `settingsNamespace`。本插件已改为直接使用 namespace 字符串，并保留类型层面的
-> `SettingsNamespace` 兼容层；因此同时兼容 `0.1.0-rc.6` 与 `0.1.2-rc.1`。
+> **DSH 0.2.0-rc.2 兼容说明（当前版本，插件 0.4.0）**：0.2.0-rc.2 是一次较大的破坏性
+> 变更，本插件已整体迁移：
+> - `@deepseek-ai/dsh-client-runtime` 被移除，客户端上下文类型改用 `@deepseek-ai/cordis`
+>   的 `Context`；
+> - `ctx.settings.register / get / mutate` 旧注册面被 `SettingsForms`（`describe` /
+>   `mutate`）取代，可热改字段改为 Schemastery `.volatile()` 引用；
+> - 待交互数据源由 `uiSession.pendingInteractions` 改为 `uiSession.sessionStatus`
+>   （`Map<sessionId, { running, pendingInteraction, completionUnread }>`）；
+> - `workspaces.openPath` 被 `ctx.remote.session.openWorkspacePath` 取代；
+> - 平台模块表更新为 0.2.0-rc.2 的
+>   `@deepseek-ai/dsh-client-store` / `-ui-slots` / `-ui-primitives` / `-ui-dockkit`。
 
-> **DSH 0.1.5-rc.x 兼容说明**：该版本移除了会话列表行上的
-> `SessionSummary.pendingInteraction`，待审批 / 待提问 / 待计划确认改由客户端
-> `uiSession.pendingInteractions` 统一发布。桌宠的「等待审批」状态已改为订阅该
-> 客户端存储（`src/client/pending-state.ts`），并保留对旧版 Host
-> `approval/request` 的回落；`dsh.client.inject` 同步改为真实包名。
+> **版本对应关系**：`0.4.x` 面向 DSH `0.2.0-rc.2`；`0.3.x` 及更早面向
+> DSH `0.1.0-rc.6` ~ `0.1.5-rc.x`，已不再被当前源码支持（历史版本见 git 记录）。
 
 ---
 
@@ -75,6 +80,24 @@ pnpm build
 
 > Release 正式包已包含 `lib/` 产物，普通用户升级时不需要本地构建。
 
+### 从 0.3.0 升级到 0.4.0（DSH 0.2.0-rc.2）
+
+```bash
+dsh plugin --profile web remove dsh-anime25d-pets
+dsh plugin --profile web add github:coldfish486/dsh-anime25d-pets
+# 重启 dsh web，并硬刷新页面（Ctrl/Cmd + Shift + R）
+```
+
+- 0.4.0 **要求 DSH `0.2.0-rc.2`**；仍在使用 0.1.x 的环境请继续用 0.3.0。
+- 配置持久化位置变化：不再写 `$DSH_HOME/settings.yaml`，改由 `ctx.settings` 写入当前
+  profile 的 Cordis 配置层。DSH 0.2.0 首次启动会把遗留 `settings.yaml` 的每个 section
+  一次性导入同 id 条目（随后文件改名为 `settings.yaml.imported`），原有
+  `anime25d-pet` 配置通常会自动带过来；若没有，把旧 section 内容补进插件条目的
+  `config` 即可。
+- `size` / `model` / `persona` / `fpsLimit` / `opacity` / `developerMode` / `debug` /
+  `showTapZones` / `animeParams` / `talk` / `rand` / `flip` 现在是**可热改**字段
+  （Schemastery `.volatile()`）：在「桌宠配置」页或浮动面板改完即时生效，不再重载插件。
+
 ### 禁用
 
 在 DSH 设置 →「桌宠配置」中关闭"启用桌宠"开关即可。
@@ -110,27 +133,31 @@ dsh plugin --profile web remove dsh-anime25d-pets
 ### 可复现示例
 
 ```yaml
-# settings.yaml 中 anime25d-pet 部分的参考配置
-anime25d-pet:
-  enabled: true
-  size: 200
-  model: sample            # 使用内置示例模型
-  animeParams:
-    angleX: 0.2            # 左右转头
-    mouthOpen: 0.3         # 嘴巴张开
-  talk: true               # 随机开口说话
-  rand: false              # 随机小动作
-  flip: false              # 左右镜像翻转
-  fpsLimit: 30             # 帧率限制（30 / 60 / 0=无限制）
-  opacity: 1.0             # 宠物透明度（0~1，含气泡）
-  persona: tsundere
+# profile 的 cordis.patch.yml（或 DSH 0.2.0 首次导入的 settings.yaml.imported）
+# 中 anime25d-pet 条目的参考配置；带 `.volatile()` 的字段也可在「桌宠配置」页热改。
+- insert:
+    - id: anime25d-pet
+      name: dsh-anime25d-pets
+      config:
+        enabled: true
+        size: 200
+        model: sample            # 使用内置示例模型
+        animeParams:
+          angleX: 0.2            # 左右转头
+          mouthOpen: 0.3         # 嘴巴张开
+        talk: true               # 随机开口说话
+        rand: false              # 随机小动作
+        flip: false              # 左右镜像翻转
+        fpsLimit: 30             # 帧率限制（30 / 60 / 0=无限制）
+        opacity: 1.0             # 宠物透明度（0~1，含气泡）
+        persona: tsundere
 ```
 
 ---
 
 ## 配置说明
 
-### settings.yaml 配置项
+### 配置项（Schemastery Config，volatile 字段可热改）
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
@@ -193,7 +220,7 @@ anime25d-pet:
 | 数据/资源 | 访问方式 | 说明 |
 |-----------|---------|------|
 | 本地 PSD 文件 | `node:fs` 读取 | 仅在用户配置了本地模型路径时读取 |
-| 设置配置 | DSH settings API | 读写 `settings.yaml` |
+| 设置配置 | DSH `ctx.settings`（SettingsForms） | 读写当前 profile 的 Cordis 配置层（0.2.0-rc.2；旧的 `settings.yaml` 由 DSH 一次性导入） |
 | 自定义模型配置 | `~/.dsh/anime25d-pet/custom-models.jsonc` | JSONC 格式 |
 | 静态资源 | HTTP 同源路由 | `/pet-assets/*`、`/pet-local-models/*` |
 | 网络访问 | 无 | 不发起外部网络请求（除非用户配置了远程 PSD URL） |
@@ -210,7 +237,7 @@ anime25d-pet:
 | 紫色 🐾 方块 | 模型加载失败 | 检查模型路径是否正确；检查 `assets/lib/` 是否存在 |
 | 空白画面 | WebGL 渲染问题 | 检查浏览器是否支持 WebGL；检查 canvas 尺寸 |
 | 参数不生效 | 自动动画覆盖 | 手动设置参数后自动动画会跳过；开启自动动画会释放手动锁定 |
-| 重启后参数丢失 | 持久化失败 | 检查 `settings.yaml` 中 `anime25d-pet` 配置是否存在 |
+| 重启后参数丢失 | 持久化失败 | 检查当前 profile 的 `cordis.patch.yml` / 插件配置是否可写 |
 | 点击分区不准确 | 坐标系不匹配 | 确认 `getBounds()` 使用 CSS 坐标系 |
 
 ### 日志位置
@@ -267,6 +294,7 @@ dsh-anime25d-pets/
 │       ├── index.ts       # 桌宠主逻辑（加载/交互/面板）
 │       ├── anime25d.ts    # Anime2.5D 渲染引擎适配
 │       ├── settings.ts    # DSH 设置面板
+│       ├── pending-state.ts    # 待交互（等待审批）兼容层 + 单测
 │       └── personas.ts    # 人设台词
 ├── assets/
 │   ├── vendor/            # ag-psd 等第三方库
@@ -274,8 +302,8 @@ dsh-anime25d-pets/
 │   ├── models/            # 示例模型
 │   ├── icons/             # 图标
 │   └── demo.gif           # 效果演示图
-├── lib/                   # 构建产物（pnpm build 生成）
-├── shared/                # DSH 构建配置
+├── lib/                   # 构建产物（pnpm build 生成，随仓库提交）
+├── shared/                # DSH 客户端构建预设（tsdown / 平台模块表）
 ├── package.json
 └── tsconfig.json
 ```

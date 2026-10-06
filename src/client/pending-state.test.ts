@@ -18,6 +18,11 @@ function store<T>(initial: T) {
   }
 }
 
+/** DSH 0.2.0-rc.2：`uiSession.sessionStatus` 是 Map<sessionId, SessionStatus>。 */
+function status(entries: Array<[string, { pendingInteraction?: unknown }]>) {
+  return store(new Map(entries))
+}
+
 const OLD_DSH: PendingSignal = { available: false, active: false }
 const READY: PendingSignal = { available: true, active: false }
 const WAITING: PendingSignal = { available: true, active: true }
@@ -27,32 +32,53 @@ describe('hasPendingInteraction', () => {
     expect(hasPendingInteraction(undefined, undefined, true)).toBe(false)
   })
 
-  it('空待交互 Map 返回 false', () => {
-    const uiSession = { pendingInteractions: store(new Map<string, unknown>()) }
+  it('无 sessionStatus（0.1.7 之前）返回 false', () => {
+    expect(hasPendingInteraction({}, undefined, true)).toBe(false)
+  })
+
+  it('空 sessionStatus Map 返回 false', () => {
+    expect(hasPendingInteraction({ sessionStatus: status([]) }, undefined, true)).toBe(false)
+  })
+
+  it('会话存在但无待交互时返回 false', () => {
+    const uiSession = { sessionStatus: status([['s1', { pendingInteraction: undefined }]]) }
     expect(hasPendingInteraction(uiSession, undefined, true)).toBe(false)
   })
 
   it('存在待交互时返回 true', () => {
-    const uiSession = { pendingInteractions: store(new Map([['s1', { kind: 'question' }]])) }
+    const uiSession = { sessionStatus: status([['s1', { pendingInteraction: { kind: 'question' } }]]) }
     expect(hasPendingInteraction(uiSession, undefined, true)).toBe(true)
   })
 
   it('skipSubagents=true 时忽略子代理会话', () => {
-    const pending = new Map([['sub', {}], ['main', {}]])
-    const uiSession = { pendingInteractions: store(pending) }
+    const uiSession = { sessionStatus: status([
+      ['sub', { pendingInteraction: { kind: 'approval' } }],
+      ['main', { pendingInteraction: { kind: 'question' } }],
+    ]) }
     const sessions = {
       list: store({ byId: { sub: { origin: 'subagent' }, main: { origin: 'user' } } }),
     }
     expect(hasPendingInteraction(uiSession, sessions, true)).toBe(true)
 
-    const onlySub = { pendingInteractions: store(new Map([['sub', {}]])) }
+    const onlySub = { sessionStatus: status([['sub', { pendingInteraction: { kind: 'approval' } }]]) }
     expect(hasPendingInteraction(onlySub, sessions, true)).toBe(false)
   })
 
   it('skipSubagents=false 时子代理待交互同样生效', () => {
-    const uiSession = { pendingInteractions: store(new Map([['sub', {}]])) }
+    const uiSession = { sessionStatus: status([['sub', { pendingInteraction: { kind: 'plan-review' } }]]) }
     const sessions = { list: store({ byId: { sub: { origin: 'subagent' } } }) }
     expect(hasPendingInteraction(uiSession, sessions, false)).toBe(true)
+  })
+
+  it('子代理无待交互、主会话有等待时仍返回 true', () => {
+    const uiSession = { sessionStatus: status([
+      ['sub', { pendingInteraction: undefined }],
+      ['main', { pendingInteraction: { kind: 'question' } }],
+    ]) }
+    const sessions = {
+      list: store({ byId: { sub: { origin: 'subagent' }, main: { origin: 'user' } } }),
+    }
+    expect(hasPendingInteraction(uiSession, sessions, true)).toBe(true)
   })
 })
 

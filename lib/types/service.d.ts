@@ -2,11 +2,11 @@
  * PetService：宠物状态机 + 显示配置 + 持久化。
  * 状态源为 DSH 真实事件（Event.listEvents 实测）：
  *   agent/status（idle⇄running）、agent/error、agent/turn-stopping、approval/request。
- * 配置经 getConfig() 读取 settings 解析值（schema 默认 → base → 用户层）。
+ * 配置经 getConfig() 读取 volatile 引用的平面快照（每次调用现读，热改即时反映）。
  * @module dsh-anime25d-pets/service
  */
 import type { Context } from '@deepseek-ai/cordis';
-import type { Config } from './index.ts';
+import type { PetConfig } from './index.ts';
 import { type CustomModelEntry, type MotionMap, type SpatialTapConfig } from './models.ts';
 import { CustomModelsStore, type CustomModelsFileView } from './custom-models.ts';
 import { type PetDisplay } from './persist.ts';
@@ -66,7 +66,7 @@ export declare class PetService {
     private display;
     private doneTimerId;
     private listeners;
-    constructor(ctx: Context, getConfig: () => Config, personasStore?: PersonasStore | undefined, customModelsStore?: CustomModelsStore | undefined);
+    constructor(ctx: Context, getConfig: () => PetConfig, personasStore?: PersonasStore | undefined, customModelsStore?: CustomModelsStore | undefined);
     /** 立即切换状态；取消未完成的"完成"保持计时。 */
     private set;
     /** 进入"完成"并保持 DONE_HOLD_MS 后回空闲（客户端据此播庆祝动画）。 */
